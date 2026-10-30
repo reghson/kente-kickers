@@ -1,0 +1,11 @@
+{
+  "appId": "com.reghson.kentekickers",
+  "appName": "Kente Kickers",
+  "webDir": "www",
+  "backgroundColor": "#0d2b14",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

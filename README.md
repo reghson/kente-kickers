@@ -23,7 +23,11 @@ An original, free football game for your phone. Build your own club, manage the 
 - **Friendly mode:** any club against any club, played or simulated.
 - **Manage:** 5 formations, pick your XI, train players, and buy and sell on the transfer market. Matches last 2, 3 or 5 minutes, or use quick sim.
 - **Club hub (dark-blue look):** a big PLAY card with your next fixture and match length, plus 8 tiles: Team, Training, Transfers, League, Cups, Club, Kit & Crest and Stadium.
-- **Two currencies, earned only by playing:** coins and **Gold Kente**. You earn them from matches, objectives, achievements and level-ups. There are no real-money purchases and no ads.
+- **Two currencies, earned only by playing:** coins and **Gold Kente**. You earn them from matches, objectives, achievements and level-ups. Everything can be earned for free. The website has no ads and no purchases.
+- **Match rules:** fouls, free kicks, penalties, yellow and red cards, an optional offside rule (Settings) and light knocks that lower fitness.
+- **Goal replays:** tap **R+** to watch the last goal again. Replays can be turned off in Settings.
+- **Difficulty:** Easy, Normal, Hard and Legend, set in Settings or on the pre-match screen. The AI gets sharper at higher levels.
+- **First-time tutorial:** a short guide that explains the controls (you can replay it from Settings).
 - **Player cards:** OVR, position, star rating, a nationality colour stripe, a six-stat radar (PAC/SHO/PAS/DRI/DEF/PHY) and stamina. Cards come in bronze, silver and gold.
 - **Kit & Crest editor:** home and away kits (shirt, shorts and socks colours) with patterns: plain, stripes, hoops, sash, halves, pinstripe and an unlockable Kente weave. You can also edit the crest's colours, shape and emblem. The away kit is used automatically when the colours clash.
 - **Club levels and stadium:** earn XP to level up your club, and spend coins to upgrade your stadium. It grows visibly from a small ground into a big arena.
@@ -59,6 +63,9 @@ The game is best played in landscape. A rotate prompt appears in portrait, and y
 
 ## Notes
 - All leagues, cups, clubs, players, crests and names are invented. There are no real clubs, competitions, badges or brands.
-- No ads, no payments, no tracking.
+- Website/PWA: no ads, no payments, no tracking. Privacy policy: [privacy.html](https://reghson.github.io/kente-kickers/privacy.html).
+- **Android app (in preparation, not yet on Google Play):** it uses Capacitor (`com.reghson.kentekickers`). Build it with `npm install && node scripts/build-www.js && npx cap sync android && cd android && ./gradlew bundleRelease`.
+  - The optional Google Play coin shop (fixed packs, no loot boxes) and optional AdMob ads (a rewarded bonus and at most one interstitial every 3 matches, never during play) are prepared but switched **off** by `BILLING_ENABLED` and `ADS_ENABLED` in `js/config.js`.
+  - The signing keystore is never committed.
 - This is a plain HTML, CSS and JavaScript PWA with no build step.
 - 3D graphics use [three.js](https://threejs.org) r180 (MIT licence, see `js/vendor/THREE-LICENSE.txt`), stored in the repo so the game works offline.
