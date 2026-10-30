@@ -258,7 +258,7 @@
       if (draft.career.mode === 'eu' && (!draft.career.country || !draft.career.tier)) return toast('Pick a country and a league');
       save = KK.newCareer({ name: draft.name.trim(), short: (/^[A-Z]{3}$/.test(draft.short) && !/^(SUX|SEX|ASS|FUK|FUC|DIK|DIC|COK|CUM|FAG|NIG|TIT|POO|WTF|KKK|GAY|PIS|XXX)$/.test(draft.short)) ? draft.short : KK.shortName(draft.name.trim() || 'Kente'), crest: draft.crest, kit: draft.kit }, draft.players, draft.career);
       save.settings.gfx = save.settings.gfx || KK.settings.gfx; save.settings.q = save.settings.q || KK.settings.q;
-      KK.settings = save.settings; persist(); KK.sfx.whistle(1); toast('Welcome to the ' + KK.leagueName(save) + '!'); return go('hub');
+      KK.settings = save.settings; persist(); KK.sfx.whistle(1); toast('Welcome to ' + KK.leagueName(save) + '!'); return go('hub');
     }
     if (d.len) { KK.settings.len = +d.len; persist(); return render(); }
     if (b.id === 'h-play') return startMatch({ kind: 'league' });
