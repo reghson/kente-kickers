@@ -1,0 +1,31 @@
+name: Decode assets and publish Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decode base64 assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898099+github-actions[bot]@users.noreply.github.com"
+          if [ -f assets.b64.txt ]; then
+            while read -r path data; do
+              [ -z "$path" ] && continue
+              mkdir -p "$(dirname "$path")"
+              echo "$data" | base64 -d > "$path"
+            done < assets.b64.txt
+            git rm -q assets.b64.txt
+            git add -A
+            git commit -m "Decode binary assets" || true
+            git push origin HEAD:main
+          fi
+      - name: Publish gh-pages
+        run: git push -f origin HEAD:gh-pages
