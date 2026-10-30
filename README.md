@@ -22,16 +22,40 @@ An original, free football game for your phone. Build your own club, manage the 
   - Both have a group stage and then knockouts. Qualification comes from the final league tables. You earn prize coins (the Crown pays more) and trophies for your cabinet.
 - **Friendly mode:** any club against any club, played or simulated.
 - **Manage:** 5 formations, pick your XI, train players, and buy and sell on the transfer market. Matches last 2, 3 or 5 minutes, or use quick sim.
+- **Club hub (dark-blue look):** a big PLAY card with your next fixture and match length, plus 8 tiles: Team, Training, Transfers, League, Cups, Club, Kit & Crest and Stadium.
+- **Two currencies, earned only by playing:** coins and **Gold Kente**. You earn them from matches, objectives, achievements and level-ups. There are no real-money purchases and no ads.
+- **Player cards:** OVR, position, star rating, a nationality colour stripe, a six-stat radar (PAC/SHO/PAS/DRI/DEF/PHY) and stamina. Cards come in bronze, silver and gold.
+- **Kit & Crest editor:** home and away kits (shirt, shorts and socks colours) with patterns: plain, stripes, hoops, sash, halves, pinstripe and an unlockable Kente weave. You can also edit the crest's colours, shape and emblem. The away kit is used automatically when the colours clash.
+- **Club levels and stadium:** earn XP to level up your club, and spend coins to upgrade your stadium. It grows visibly from a small ground into a big arena.
+- **Matchday screens:**
+  - a pre-match screen with line-ups, team OVR, fitness and weather;
+  - half-time stats with substitutions;
+  - full-time stats (possession, shots, passes, tackles, saves);
+  - man of the match, with player ratings;
+  - rewards.
+- **Objectives and achievements:** season objectives plus 13 achievements, each with coin and Gold Kente rewards.
+- **Formation screen:** drag and drop shirts or substitutes to swap them, with stamina bars. You can also tap one player and then another.
+- **Commentary pop-ups** during matches (they can be turned off in Settings), plus an optional short manager story at the start.
+- **Match look:**
+  - mowing patterns and rain or snow;
+  - LED boards, stewards and camera operators;
+  - name labels and a marker over your player;
+  - a scorebar and timer;
+  - a minimap with a mentality tab (Balanced, Attacking or Defending) that changes how the AI plays.
 - Progress saves on your device. Older saves are upgraded automatically.
 
 ## Controls
 | Action | Touch | Keyboard |
 |---|---|---|
-| Move | Drag on left half of screen | Arrows / WASD |
-| Pass / switch player | PASS | J or Space |
-| Shoot (hold = power) | SHOOT | K or Enter |
-| Tackle (near opponent) / Sprint (hold) | TACKLE | L or Shift |
+| Move | Joystick (bottom left) | Arrows / WASD |
+| **A:** shoot (hold for power) / slide tackle | A | K or Enter |
+| **B:** pass / pressure | B | J or Space |
+| **C:** lofted kick / switch player | C | U or I |
+| Sprint | SPRINT | L or Shift |
+| Change mentality | Tab under the minimap | M |
 | Pause, subs, sim | ⏸ | P or Esc |
+
+The game is best played in landscape. A rotate prompt appears in portrait, and you can skip it.
 
 ## Notes
 - All leagues, cups, clubs, players, crests and names are invented. There are no real clubs, competitions, badges or brands.
