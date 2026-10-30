@@ -23,6 +23,6 @@ KK.CONFIG = Object.freeze({
   }),
   INTERSTITIAL_EVERY: 3, // at most one interstitial every 3 matches
   REWARD_COINS: 150,     // bonus coins for an optional rewarded ad after a match
-  APP_VERSION: '1.0.0',
+  APP_VERSION: '1.0.1',
   PRIVACY_URL: 'https://reghson.github.io/kente-kickers/privacy.html',
 });

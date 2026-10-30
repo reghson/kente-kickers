@@ -36,6 +36,15 @@ export function create(canvas, opts = {}) {
   const camera = new THREE.PerspectiveCamera(36, 1, 0.5, 450);
   const disposables = [];
   const keep = (o) => { disposables.push(o); return o; };
+  // skinned, rigged players (CC0 models + skeletal animation). Loaded in the background; the
+  // lightweight procedural figures are used until (or if) they are ready.
+  let P3 = null, psys = null, dead = false; const rigs = new Map();
+  if (!opts.noSkinned) {
+    import('./players3d.js').then((mod) => mod.loadAssets().then((A) => {
+      if (dead) return; P3 = { mod, A };
+      if (curMatch) { const m = curMatch; curMatch = null; api.begin(m); }
+    })).catch((e) => console.warn('[kk] skinned players unavailable:', e && e.message));
+  }
 
   // ---------- lights (night match under floodlights) ----------
   const hemi = new THREE.HemisphereLight('#f4f8ff', '#41622f', 1.9); scene.add(hemi);
@@ -114,7 +123,7 @@ export function create(canvas, opts = {}) {
   const roofMat = keep(new THREE.MeshLambertMaterial({ color: '#2a3140' }));
   const wallMat = keep(new THREE.MeshLambertMaterial({ color: '#1c2230' }));
   const standGrp = new THREE.Group(); scene.add(standGrp);
-  let stadiumLevel = -1;
+  let stadiumLevel = -1, nearStand = null;
   function stand(cx, cz, len, rotY, H1, D) {
     const grp = new THREE.Group(); grp.position.set(cx, 0, cz); grp.rotation.y = rotY;
     const geo = keep(new THREE.BufferGeometry());
@@ -126,14 +135,14 @@ export function create(canvas, opts = {}) {
     const front = new THREE.Mesh(keep(new THREE.BoxGeometry(len, H0, 0.4)), wallMat); front.position.set(0, H0 / 2, 0.1); grp.add(front);
     const back = new THREE.Mesh(keep(new THREE.BoxGeometry(len, H1 + 4, 0.6)), wallMat); back.position.set(0, (H1 + 4) / 2, -D - 0.3); grp.add(back);
     const roof = new THREE.Mesh(keep(new THREE.BoxGeometry(len, 0.4, 12)), roofMat); roof.position.set(0, H1 + 4.5, -D + 4); roof.rotation.x = -0.12; grp.add(roof);
-    standGrp.add(grp);
+    standGrp.add(grp); return grp;
   }
   // stadium level 0..4 → bigger stands (my club's stadium upgrades)
   function buildStands(lv) {
     if (lv === stadiumLevel) return; stadiumLevel = lv;
     while (standGrp.children.length) standGrp.remove(standGrp.children[0]);
     const H = 8 + lv * 3, D = 10 + lv * 3;
-    stand(0, -(CY + 9), L + 20, 0, H, D); stand(0, CY + 9, L + 20, Math.PI, H, D);
+    stand(0, -(CY + 9), L + 20, 0, H, D); nearStand = stand(0, CY + 9, L + 20, Math.PI, H, D);
     stand(-(HL + 10), 0, W + 8, Math.PI / 2, H * 0.8, D * 0.8); stand(HL + 10, 0, W + 8, -Math.PI / 2, H * 0.8, D * 0.8);
   }
   buildStands(2);
@@ -310,6 +319,24 @@ export function create(canvas, opts = {}) {
     if (pm) { const o = new THREE.Mesh(torsoSkin, pm); o.position.set(0, 0.27, 0); o.scale.set(1.025, 1.0, 0.6 * 1.04); f.chest.add(o); }
     return f;
   }
+  function skinLook(p, tm) {
+    const M = P3.mod, gk = p.pos === 'GK', r = hashOf(p), skinI = r % M.SKIN.length;
+    const hs = [0, 0, 0, 1, 1, 2, 3, 4, 4, 0][(r >> 3) % 10];
+    const hair = M.HAIR[skinI >= 5 ? (r >> 5) % M.HAIR.length : (r >> 5) % 3];
+    return {
+      shirt: gk ? (tm.gk || '#7cb342') : tm.shirt, c2: gk ? '#111111' : (tm.c2 || (lum(tm.shirt) > 0.6 ? '#222222' : '#ffffff')), pattern: gk ? 'plain' : (tm.pattern || 'plain'),
+      shorts: gk ? '#222831' : (tm.shorts || '#ffffff'), socks: gk ? (tm.gk || '#7cb342') : (tm.socks || tm.shirt), boots: M.BOOTS[(r >> 7) % M.BOOTS.length],
+      skin: M.SKIN[skinI], hair, hairStyle: hs, beard: ((r >> 11) % 3 === 0) ? 1 : 0, mode: gk ? 1 : 0, gloves: gk ? '#f5f5f5' : null,
+      number: p.i === 0 ? 1 : p.i + 1, size: 0.97 + ((r >> 9) % 7) * 0.01, leftFoot: ((r >> 13) % 4) === 0,
+    };
+  }
+  function skinnedPerson(look, x, z, yaw, stance) {
+    const rg = psys.add(Object.assign({ forceLod1: true, noShadow: true }, look));
+    rg.yaw = yaw; if (stance) { rg.setStance(stance); rg.stanceW[stance] = 1; }
+    rg.idleT = Math.random() * 3; rg.drive({ x: 0, y: 0, vx: 0, vy: 0, fx: Math.sin(yaw), fy: Math.cos(yaw) }, x, z, 0, { yaw });
+    rg.mixer.update(0); extrasRigs.push(rg); return rg;
+  }
+  let extrasRigs = [];
   // static extras (stewards in hi-vis, camera operators) — baked into one mesh each
   function bake(group) {
     group.updateMatrixWorld(true); const parts = [];
@@ -344,8 +371,14 @@ export function create(canvas, opts = {}) {
     const steward = () => ({ shirt: '#2b2f38', shorts: '#1d2027', socks: '#1d2027', boots: '#111111', skin: SKIN[Math.floor(rnd() * SKIN.length)], hair: HAIRC[Math.floor(rnd() * 3)], hairStyle: Math.floor(rnd() * 7), vest: '#e6ff1a', sleeveLong: true, thighSkin: '#1d2027' });
     const crew = () => ({ shirt: '#1b1e25', shorts: '#2b2f38', socks: '#2b2f38', boots: '#111111', skin: SKIN[Math.floor(rnd() * SKIN.length)], hair: HAIRC[Math.floor(rnd() * 3)], hairStyle: Math.floor(rnd() * 7), sleeveLong: true, thighSkin: '#2b2f38' });
     // stewards just behind the near and far boards, facing the crowd
-    for (let x = -46; x <= 46; x += 13 + rnd() * 6) { staticPerson(steward(), x + rnd() * 2, CY + 5.6, 0); }
-    for (let x = -40; x <= 40; x += 20 + rnd() * 8) { staticPerson(steward(), x, -(CY + 5.6), Math.PI); }
+    const stw = (x, z, yaw) => {
+      if (!psys) return staticPerson(steward(), x, z, yaw);
+      const M = P3.mod, si = Math.floor(rnd() * M.SKIN.length);
+      skinnedPerson({ shirt: '#e6ff1a', c2: '#c0c6cc', pattern: 'hivis', mode: 2, shorts: '#1d2027', socks: '#1d2027', boots: '#111111', skin: M.SKIN[si], hair: M.HAIR[Math.floor(rnd() * 3)], hairStyle: [0, 1, 2, 4][Math.floor(rnd() * 4)], beard: rnd() < 0.3 ? 1 : 0, size: 0.96 + rnd() * 0.06 }, x, z, yaw);
+    };
+    // stewards just behind the near and far boards, facing the crowd
+    for (let x = -46; x <= 46; x += 13 + rnd() * 6) stw(x + rnd() * 2, CY + 5.6, 0);
+    for (let x = -40; x <= 40; x += 20 + rnd() * 8) stw(x, -(CY + 5.6), Math.PI);
     // camera operators: touchline and behind each goal
     [[-14, CY + 3.0, Math.PI], [16, CY + 3.0, Math.PI], [-HL - 3, 9, -Math.PI / 2], [HL + 3, -9, Math.PI / 2]].forEach(([x, z, yaw], i) => {
       staticPerson(crew(), x, z, yaw, i < 2 ? 'cam' : 'kneel'); cameraRig(x + Math.sin(yaw) * 0.5, z + Math.cos(yaw) * 0.5, yaw, i < 2);
@@ -500,20 +533,23 @@ export function create(canvas, opts = {}) {
     if ((m.state === 'goal' || m.state === 'end') && b.lastKicker && m.state === 'goal') { tx = b.lastKicker.x - HL; tz = b.lastKicker.y - CY; close = 1; }
     const k = snap ? 1 : 1 - Math.exp(-dt * 3.2);
     fx = lerp(fx, tx, k); fz = lerp(fz, tz, k);
-    const X = clamp(fx, -HL + (vertical ? 4 : 18), HL - (vertical ? 4 : 18));
+    const X = clamp(fx, -HL + (vertical ? 4 : 24), HL - (vertical ? 4 : 24));
     if (vertical) {
       const z = api.zoom, back = lerp(19, 9, close) * z, hgt = lerp(27, 10, close) * z;
       tmpP.set(X - back, hgt, fz * 0.8); tmpL.set(X + lerp(6, 1.5, close) * z, 0, fz * 0.85);
       camera.fov = 64;
     } else {
       // broadcast side camera on the near (+Z) touchline, elevated, follows the ball
-      const z = api.zoom, LZ = clamp(fz * 0.7 + 3, -18, 24), dist = lerp(25, 12, close) * z, hgt = lerp(13.5, 5.5, close) * z;
+      // high, wide broadcast view: ~53 deg horizontal, camera ~34 m behind the near touchline at ~16 m height
+      const z = api.zoom, LZ = clamp(fz * 0.5 + 9, -8, 24), dist = lerp(56, 13, close) * z, hgt = lerp(15.5, 5.5, close) * z;
       tmpP.set(X, hgt, LZ + dist); tmpL.set(X, 0, LZ - lerp(0, 1, close));
-      camera.fov = 36;
+      const hf = Math.tan(lerp(26.5, 22, close) * Math.PI / 180);
+      camera.fov = clamp(2 * Math.atan(hf / Math.max(1, camera.aspect)) * 180 / Math.PI, 20, 40);
     }
     const kc = snap ? 1 : 1 - Math.exp(-dt * 4.5);
     camPos.lerp(tmpP, kc); camLook.lerp(tmpL, kc); snap = false;
     camera.position.copy(camPos); camera.lookAt(camLook); camera.updateProjectionMatrix();
+    if (nearStand) nearStand.visible = camPos.z < CY + 8;
     sun.position.set(camLook.x - 22, 48, camLook.z + 18); sun.target.position.copy(camLook);
   }
 
@@ -524,9 +560,15 @@ export function create(canvas, opts = {}) {
     begin(m) {
       this.end();
       curMatch = m; snap = true; fx = m.ball.x - HL; fz = m.ball.y - CY;
-      for (const p of m.ents) figs.set(p, makeFig(p, m.teams[p.t]));
-      refFig = buildFigure({ shirt: '#111111', shorts: '#111111', socks: '#111111', boots: '#111111', skin: SKIN[2], hair: HAIRC[0], hairStyle: 1, size: 0.98 });
-      Object.assign(ref, { x: HL - 8, y: CY + 10, vx: 0, vy: 0 }); refFig.yaw = 0;
+      if (P3) {
+        if (!psys) psys = P3.mod.createPlayerSystem(scene, P3.A, { high, blobGeo, blobMat });
+        for (const p of m.ents) rigs.set(p, psys.add(skinLook(p, m.teams[p.t])));
+        rigs.set(ref, psys.add({ shirt: '#151515', c2: '#e0e0e0', shorts: '#151515', socks: '#151515', boots: '#111111', skin: P3.mod.SKIN[2], hair: P3.mod.HAIR[0], hairStyle: 0, size: 0.98 }));
+      } else {
+        for (const p of m.ents) figs.set(p, makeFig(p, m.teams[p.t]));
+        refFig = buildFigure({ shirt: '#111111', shorts: '#111111', socks: '#111111', boots: '#111111', skin: SKIN[2], hair: HAIRC[0], hairStyle: 1, size: 0.98 });
+      }
+      Object.assign(ref, { x: HL - 8, y: CY + 10, vx: 0, vy: 0 }); if (refFig) refFig.yaw = 0;
       buildExtras(7 + (m.cfg.seed || 0));
       buildStands(clamp(m.cfg.stadiumLevel == null ? 2 : m.cfg.stadiumLevel, 0, 4));
       this.weather = m.cfg.weather || 'clear'; setWeather(this.weather);
@@ -535,6 +577,7 @@ export function create(canvas, opts = {}) {
     end() {
       for (const f of figs.values()) { scene.remove(f.root); if (f.blob) scene.remove(f.blob); }
       if (refFig) { scene.remove(refFig.root); if (refFig.blob) scene.remove(refFig.blob); refFig = null; }
+      if (psys) { for (const rg of rigs.values()) psys.remove(rg); for (const rg of extrasRigs) psys.remove(rg); } rigs.clear(); extrasRigs = [];
       extras.forEach((o) => scene.remove(o)); extras = []; setWeather('clear');
       figs.clear(); patMats.clear(); perMatch.forEach((o) => o.dispose()); perMatch = []; curMatch = null;
     },
@@ -548,23 +591,27 @@ export function create(canvas, opts = {}) {
       t += dt;
       for (const [p, f] of figs) animate(f, p, m, dt, t);
       if (refFig) { if (m.state !== 'kickoff') updateRef(m, dt); animate(refFig, ref, m, dt, t); }
+      let bo = null;
+      if (psys && rigs.size) { if (m.state !== 'kickoff') updateRef(m, dt); bo = psys.update(m, dt, camera, rigs); }
       updateLED(dt);
       const b = m.ball, bx = b.x - HL, bz = b.y - CY;
-      const dx = bx - ball.position.x, dz = bz - ball.position.z, dist = Math.hypot(dx, dz);
+      const nx = bo ? bo.x : bx, nz = bo ? bo.z : bz;
+      const dx = nx - ball.position.x, dz = nz - ball.position.z, dist = Math.hypot(dx, dz);
       if (dist > 0.0001 && dist < 5) { axis.set(dz, 0, -dx).normalize(); q.setFromAxisAngle(axis, dist / BR); ball.quaternion.premultiply(q); }
-      ball.position.set(bx, BR + Math.max(0, b.z), bz);
-      ballShadow.position.set(bx + b.z * 0.25, 0.015, bz + b.z * 0.15); const ss = 0.75 + b.z * 0.12; ballShadow.scale.set(ss, 1, ss); ballShadow.material.opacity = 1;
+      if (bo) ball.position.set(bo.x, Math.max(BR, bo.y), bo.z); else ball.position.set(bx, BR + Math.max(0, b.z), bz);
+      const by = ball.position.y - BR; ballShadow.position.set(ball.position.x + by * 0.25, 0.015, ball.position.z + by * 0.15); const ss = 0.75 + by * 0.12; ballShadow.scale.set(ss, 1, ss); ballShadow.material.opacity = 1;
       cameraTarget(m, dt);
       updateWeather(dt);
       renderer.render(scene, camera);
     },
+    skinned() { return !!(psys && rigs.size); },
     setStadium(lv) { buildStands(clamp(lv, 0, 4)); },
     project(x, y, h) {
-      proj.set(x - HL, h * PS, y - CY).project(camera);
+      proj.set(x - HL, h * (psys ? psys.scale : PS), y - CY).project(camera);
       if (proj.z > 1 || proj.z < -1) return null;
       return [(proj.x + 1) / 2 * cssW, (1 - proj.y) / 2 * cssH];
     },
-    dispose() { this.end(); disposables.forEach((o) => o.dispose && o.dispose()); renderer.dispose(); },
+    dispose() { dead = true; this.end(); if (psys) psys.dispose(); disposables.forEach((o) => o.dispose && o.dispose()); renderer.dispose(); },
   };
   return api;
 }
