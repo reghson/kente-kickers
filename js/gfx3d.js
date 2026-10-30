@@ -533,7 +533,7 @@ export function create(canvas, opts = {}) {
     if ((m.state === 'goal' || m.state === 'end') && b.lastKicker && m.state === 'goal') { tx = b.lastKicker.x - HL; tz = b.lastKicker.y - CY; close = 1; }
     const k = snap ? 1 : 1 - Math.exp(-dt * 3.2);
     fx = lerp(fx, tx, k); fz = lerp(fz, tz, k);
-    const X = clamp(fx, -HL + (vertical ? 4 : 24), HL - (vertical ? 4 : 24));
+    const mg = vertical ? 4 : lerp(24, 4, close), X = clamp(fx, -HL + mg, HL - mg);
     if (vertical) {
       const z = api.zoom, back = lerp(19, 9, close) * z, hgt = lerp(27, 10, close) * z;
       tmpP.set(X - back, hgt, fz * 0.8); tmpL.set(X + lerp(6, 1.5, close) * z, 0, fz * 0.85);
@@ -541,7 +541,7 @@ export function create(canvas, opts = {}) {
     } else {
       // broadcast side camera on the near (+Z) touchline, elevated, follows the ball
       // high, wide broadcast view: ~53 deg horizontal, camera ~34 m behind the near touchline at ~16 m height
-      const z = api.zoom, LZ = clamp(fz * 0.5 + 9, -8, 24), dist = lerp(56, 13, close) * z, hgt = lerp(15.5, 5.5, close) * z;
+      const z = api.zoom, LZ = lerp(clamp(fz * 0.5 + 9, -8, 24), fz, close), dist = lerp(56, 13, close) * z, hgt = lerp(15.5, 5.5, close) * z;
       tmpP.set(X, hgt, LZ + dist); tmpL.set(X, 0, LZ - lerp(0, 1, close));
       const hf = Math.tan(lerp(26.5, 22, close) * Math.PI / 180);
       camera.fov = clamp(2 * Math.atan(hf / Math.max(1, camera.aspect)) * 180 / Math.PI, 20, 40);
