@@ -25,12 +25,14 @@
     <button data-go="hub">🏠<span>Home</span></button>
     <button data-go="squad">👕<span>Squad</span></button>
     <button data-go="market">💱<span>Transfers</span></button>
-    <button data-go="league">🏆<span>League</span></button>
+    <button data-go="league">📊<span>League</span></button>
+    <button data-go="cups">🏆<span>Cups</span></button>
     <button data-go="club">🏟️<span>Club</span></button>
   </nav>
 </div>
 
 <div id="match" class="hidden">
+  <canvas id="pitch3d" class="hidden"></canvas>
   <canvas id="pitch"></canvas>
   <div id="hud">
     <button id="m-pause" class="hud-btn" aria-label="Pause">⏸</button>
@@ -50,6 +52,7 @@
 <div id="toast" class="hidden"></div>
 
 <script src="js/data.js"></script>
+<script src="js/europe.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/match.js"></script>
 <script src="js/ui.js"></script>

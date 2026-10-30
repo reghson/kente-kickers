@@ -4,7 +4,10 @@
   const KK = window.KK, $ = s => document.querySelector(s), esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let save = KK.load();
   KK.settings = save ? save.settings : { mute: false, len: 3 };
-  let view = 'hub', selSlot = null, match = null, draft = null;
+  const lowEnd = (navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 4) <= 3;
+  if (!KK.settings.gfx) KK.settings.gfx = '3d';
+  if (!KK.settings.q) KK.settings.q = lowEnd ? 'low' : 'high';
+  let view = 'hub', selSlot = null, match = null, draft = null, cupTab = null, euFilter = '';
   const PATTERNS = ['plain', 'halves', 'stripes', 'chevron', 'kente'], EMBLEMS = ['star', 'ball', 'drum', 'bird', 'letters'];
 
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2200); }
@@ -12,6 +15,7 @@
   function closeModal() { $('#modal').classList.add('hidden'); }
   KK.ui = { toast, modal, closeModal };
   const persist = () => KK.save(save);
+  KK.ui.getSave = () => save; // read-only hook used by automated tests
   const surname = n => n.split(' ').slice(-1)[0];
   const crestOf = (t, size) => t.id === 'ME' ? KK.crestSVG(save.team.crest, size, save.team.short) : KK.crestSVG({ c1: t.c1, c2: t.c2, pattern: PATTERNS[t.name.length % 5], emblem: EMBLEMS[t.name.charCodeAt(0) % 5] }, size, t.short);
 
@@ -22,10 +26,11 @@
     if (!on) return;
     $('#tb-crest').innerHTML = KK.crestSVG(save.team.crest, 34, save.team.short);
     $('#tb-name').textContent = save.team.name;
-    $('#tb-div').textContent = `Division ${save.season.div} · Season ${save.season.year}`;
+    $('#tb-div').innerHTML = `${flagOf(save, 16, 11)} ${esc(KK.leagueName(save))} · Season ${save.season.year}`;
     $('#tb-coins').textContent = save.coins.toLocaleString();
     document.querySelectorAll('#bottomnav button').forEach(b => b.classList.toggle('on', b.dataset.go === view));
   }
+  const flagOf = (sv, w = 24, h = 16) => KK.flagSVG(KK.career(sv).mode === 'eu' ? KK.country(sv.career.country).flag : KK.GHANA_FLAG, w, h);
   function go(v) { view = v; selSlot = null; render(); window.scrollTo(0, 0); }
   KK.go = go;
 
@@ -33,18 +38,41 @@
     updateTop();
     const el = $('#screen');
     if (!save || view === 'builder') el.innerHTML = builderHTML();
-    else el.innerHTML = ({ hub: hubHTML, squad: squadHTML, market: marketHTML, league: leagueHTML, club: clubHTML }[view] || hubHTML)();
+    else el.innerHTML = ({ hub: hubHTML, squad: squadHTML, market: marketHTML, league: leagueHTML, club: clubHTML, cups: cupsHTML }[view] || hubHTML)();
   }
 
   // ---------- builder ----------
   function newDraft() {
-    draft = { name: 'Sewa United', short: 'SEW', crest: { c1: '#c62828', c2: '#fdd835', pattern: 'kente', emblem: 'star' }, kit: { shirt: '#c62828', shorts: '#111111' }, players: KK.genSquad(50) };
+    draft = { name: 'Sewa United', short: 'SEW', crest: { c1: '#c62828', c2: '#fdd835', pattern: 'kente', emblem: 'star' }, kit: { shirt: '#c62828', shorts: '#111111' }, players: KK.genSquad(50), career: { mode: 'gh' } };
+  }
+  function draftSquad() {
+    const c = draft.career;
+    if (c.mode === 'eu') { const co = KK.country(c.country); draft.players = KK.genSquad(KK.tierBase(co, c.tier) - 4, co.style); }
+    else draft.players = KK.genSquad(50);
+  }
+  function careerHTML() {
+    const c = draft.career;
+    let eu = '';
+    if (c.mode === 'eu') {
+      const q = euFilter.toLowerCase();
+      const list = KK.COUNTRIES.filter(x => !q || x.name.toLowerCase().includes(q) || x.brand.toLowerCase().includes(q));
+      const co = c.country && KK.country(c.country);
+      eu = `<input type="text" id="f-eusearch" placeholder="Search ${KK.COUNTRIES.length} countries…" value="${esc(euFilter)}" style="margin-top:10px">
+      <div class="clist" id="clist">${list.map(x => `<button data-country="${x.code}" class="${c.country === x.code ? 'on' : ''}">${KK.flagSVG(x.flag, 30, 20)}<span><b>${esc(x.name)}</b><small>${esc(x.brand)} · ${x.tiers} tier${x.tiers > 1 ? 's' : ''}</small></span><span class="lv">OVR ${x.top}</span></button>`).join('')}</div>
+      ${co ? `<label class="lbl">Start in</label><div class="chips">${Array.from({ length: co.tiers }, (_, i) => i + 1).map(t => `<button class="chip ${c.tier === t ? 'on' : ''}" data-tier="${t}">${esc(KK.tierName(co, t))} <small>~${KK.tierBase(co, t)}</small></button>`).join('')}</div>
+      <p style="font-size:12px;color:var(--mute);margin:6px 0 0">${co.tiers > 1 ? 'Top 2 go up, bottom 2 go down. ' : ''}Finish high in the top tier to qualify for the Continental Crown Cup or the Continental Shield.</p>` : '<p style="font-size:13px;color:var(--mute)">Pick a country to see its leagues.</p>'}`;
+    }
+    return `<div class="card"><h3>0. Where do you start?</h3>
+      <div class="chips"><button class="chip ${c.mode === 'gh' ? 'on' : ''}" data-mode="gh">${KK.flagSVG(KK.GHANA_FLAG, 20, 13)} Ghana Road to Glory</button><button class="chip ${c.mode === 'eu' ? 'on' : ''}" data-mode="eu">🌍 European leagues (${KK.allLeagues().length})</button></div>
+      ${c.mode === 'gh' ? '<p style="font-size:13px;color:var(--mute);margin:8px 0 0">Start in Division 6 and climb all the way to Division 1.</p>' : eu}
+    </div>`;
   }
   function builderHTML() {
     if (!draft) newDraft();
     const sw = (key, val) => KK.COLORS.map(c => `<button class="sw ${val === c ? 'on' : ''}" style="background:${c}" data-sw="${key}" data-c="${c}" aria-label="colour ${c}"></button>`).join('');
     const d = draft;
-    return `<div class="hero"><div class="logo">⚽ KENTE KICKERS</div><div class="kente"></div><div style="color:var(--mute)">Build your club. Climb from Division 6 to the top.</div></div>
+    return `<div class="hero"><div class="logo">⚽ KENTE KICKERS</div><div class="kente"></div><div style="color:var(--mute)">Build your club. Climb to the top, at home or across Europe.</div></div>
+    ${careerHTML()}
     <div class="card"><h3>1. Club name</h3>
       <input type="text" id="f-name" maxlength="22" value="${esc(d.name)}" placeholder="Your club name">
       <label class="lbl">Short name (3 letters)</label><input type="text" id="f-short" maxlength="3" value="${esc(d.short)}" style="text-transform:uppercase">
@@ -81,9 +109,19 @@
       <button class="btn alt block" id="h-sim" style="margin-top:8px">⏩ Quick sim</button>`;
     }
     const hist = (save.history || []).slice(-6).reverse();
-    return `<div class="card"><div class="row between"><h3>Round ${Math.min(s.round + 1, s.fixtures.length)} of ${s.fixtures.length}</h3><span class="tag">${pos}${['st', 'nd', 'rd'][pos - 1] || 'th'} in Div ${s.div}</span></div>${next}</div>
+    const cupCards = ['crown', 'shield'].map(k => {
+      const cup = save.cups && save.cups[k]; if (!cup || !cup.userIn) return '';
+      const def = KK.CUPS[k], uf = KK.cupUserFixture(save, cup);
+      if (!uf) return `<div class="card cupcard"><div class="cuphead"><span class="ic">${def.icon}</span><div><h3>${def.name}</h3><small>${cup.winner === 'ME' ? '🏆 You won it!' : cup.userOut ? 'Your run is over this season.' : 'Waiting for the next round.'}</small></div></div></div>`;
+      const home = uf.h === 'ME', opp = KK.cupTeam(cup, home ? uf.a : uf.h), due = KK.cupDue(save, cup);
+      return `<div class="card cupcard"><div class="cuphead"><span class="ic">${def.icon}</span><div><h3>${def.name}</h3><small>${KK.CUP_STAGE[cup.md]} · ${home ? 'HOME' : 'AWAY'} vs <b>${esc(opp.name)}</b> ${opp.country ? KK.flagSVG(KK.country(opp.country).flag, 16, 11) : ''} (OVR ${opp.rating})</small></div></div>
+        ${due ? `<button class="btn block" data-cupplay="${k}" style="margin-top:10px">▶ PLAY CUP MATCH</button><button class="btn alt block" data-cupsim="${k}" style="margin-top:8px">⏩ Quick sim</button>` : `<p style="font-size:13px;color:var(--mute)">Opens after league round ${KK.CUP_DUE[cup.md]}.</p>`}</div>`;
+    }).join('');
+    return `<div class="card"><div class="row between"><h3>Round ${Math.min(s.round + 1, s.fixtures.length)} of ${s.fixtures.length}</h3><span class="tag">${pos}${['st', 'nd', 'rd'][pos - 1] || 'th'} · ${esc(KK.leagueName(save))}</span></div>${next}</div>
+    ${cupCards}
+    <div class="card"><div class="row between"><div><h3>🤝 Friendly</h3><small style="color:var(--mute)">Any club vs any club, from ${KK.allLeagues().length} leagues. No effect on your season.</small></div><button class="btn sm" id="h-friendly">Play</button></div></div>
     <div class="row"><div class="stat"><small>Team OVR</small><span class="big-num">${KK.myRating(save)}</span></div><div class="stat"><small>Coins</small><span class="big-num">${save.coins.toLocaleString()}</span></div><div class="stat"><small>Trophies</small><span class="big-num">${(save.trophies || []).length}</span></div></div>
-    <div class="card"><h3>Recent results</h3>${hist.length ? hist.map(h => `<div class="fx"><span><span class="res ${h.res}">${h.res}</span>vs ${esc(h.opp)}</span><span class="sc">${h.my} - ${h.op}</span></div>`).join('') : '<p style="color:var(--mute)">No matches yet. Kick off your first game!</p>'}</div>
+    <div class="card"><h3>Recent results</h3>${hist.length ? hist.map(h => `<div class="fx"><span><span class="res ${h.res}">${h.res}</span>${h.cup ? KK.CUPS[h.cup].icon + ' ' : ''}vs ${esc(h.opp)}</span><span class="sc">${h.my} - ${h.op}</span></div>`).join('') : '<p style="color:var(--mute)">No matches yet. Kick off your first game!</p>'}</div>
     <div class="card"><h3>How to play</h3><p style="font-size:14px;line-height:1.5;color:var(--mute)">Drag the left side of the screen to run. <b>PASS</b> passes in the direction you are running (or switches player when defending). Hold and release <b>SHOOT</b> for power. <b>TACKLE</b> steals the ball near an opponent; hold it to sprint. Keyboard: arrows/WASD, J pass, K shoot, L tackle/sprint, P pause.</p></div>`;
   }
 
@@ -119,13 +157,14 @@
   // ---------- league ----------
   function leagueHTML() {
     const s = save.season, t = KK.table(save);
-    const rows = t.map((r, i) => `<tr class="${r.id === 'ME' ? 'me' : ''} ${i < 2 && s.div > 1 ? 'up' : ''} ${i >= 6 && s.div < 6 ? 'down' : ''}"><td>${i + 1}</td><td class="tn">${esc(r.name)}</td><td>${r.P}</td><td>${r.W}</td><td>${r.D}</td><td>${r.L}</td><td>${r.GF - r.GA > 0 ? '+' : ''}${r.GF - r.GA}</td><td><b>${r.Pts}</b></td></tr>`).join('');
+    const nT = KK.numTiers(save), top = s.div === 1 ? (KK.leagueBase(save, 1) >= 80 ? 4 : KK.leagueBase(save, 1) >= 73 ? 2 : 1) : 0;
+    const rows = t.map((r, i) => `<tr class="${r.id === 'ME' ? 'me' : ''} ${(i < 2 && s.div > 1) || i < top ? 'up' : ''} ${i >= 6 && s.div < nT ? 'down' : ''}"><td>${i + 1}</td><td class="tn">${esc(r.name)}</td><td>${r.P}</td><td>${r.W}</td><td>${r.D}</td><td>${r.L}</td><td>${r.GF - r.GA > 0 ? '+' : ''}${r.GF - r.GA}</td><td><b>${r.Pts}</b></td></tr>`).join('');
     const name = id => esc(KK.teamById(save, id).name);
     const shown = Math.min(s.round, s.fixtures.length - 1);
     const rd = (n) => s.fixtures[n].map(f => `<div class="fx ${f.h === 'ME' || f.a === 'ME' ? 'me' : ''}"><span class="grow" style="text-align:right">${name(f.h)}</span><span class="sc" style="margin:0 8px">${f.hs == null ? 'v' : f.hs + ' - ' + f.as}</span><span class="grow">${name(f.a)}</span></div>`).join('');
     const mine = s.fixtures.map((r, i) => { const f = r.find(x => x.h === 'ME' || x.a === 'ME'); const home = f.h === 'ME'; const opp = KK.teamById(save, home ? f.a : f.h); const my = home ? f.hs : f.as, op = home ? f.as : f.hs; const res = my == null ? '' : my > op ? 'W' : my < op ? 'L' : 'D'; return `<div class="fx"><span>R${i + 1} ${home ? '🏠' : '✈️'} ${esc(opp.name)}</span><span class="sc">${res ? `<span class="res ${res}">${res}</span>${my}-${op}` : '–'}</span></div>`; }).join('');
-    return `<div class="card"><h3>Division ${s.div} table</h3><table class="tbl"><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>${rows}</table>
-    <p style="font-size:12px;color:var(--mute)">${s.div > 1 ? '🟩 Top 2 are promoted. ' : '🏆 Win Division 1 to be champions! '}${s.div < 6 ? '🟥 Bottom 2 are relegated.' : ''}</p></div>
+    return `<div class="card"><h3>${flagOf(save)} ${esc(KK.leagueName(save))}</h3><table class="tbl"><tr><th>#</th><th style="text-align:left">Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>${rows}</table>
+    <p style="font-size:12px;color:var(--mute)">${s.div > 1 ? '🟩 Top 2 are promoted. ' : `🏆 Win the league to be champions. 🟩 Top ${top} qualify for the 👑 Crown Cup, the next 2 for the 🛡️ Shield. `}${s.div < nT ? '🟥 Bottom 2 are relegated.' : ''}</p></div>
     <div class="card"><h3>Round ${shown + 1} ${s.round > shown ? 'results' : 'fixtures'}</h3>${rd(s.round > 0 && s.round >= s.fixtures.length ? s.fixtures.length - 1 : (s.round > 0 ? s.round - 1 : 0))}</div>
     <div class="card"><h3>Your season</h3>${mine}</div>`;
   }
@@ -137,13 +176,57 @@
     <div class="card"><h3>🏟️ Stadium — level ${save.stadium + 1}/5</h3><p><b>${st.name}</b> · ${st.cap.toLocaleString()} seats</p>
     <p style="font-size:13px;color:var(--mute)">Bigger stadiums earn more coins from every match and give a home boost.</p>
     ${nx ? `<button class="btn block" id="c-stadium" ${save.coins < nx.cost ? 'disabled' : ''}>Upgrade to ${nx.name} (${nx.cap.toLocaleString()}) — 🪙${nx.cost.toLocaleString()}</button>` : '<p>🏆 Max level reached!</p>'}</div>
-    <div class="card"><h3>🏆 Trophy cabinet</h3>${(save.trophies || []).length ? save.trophies.map(t => `<div class="fx"><span>🏆 Division ${t.d} champions</span><span>Season ${t.y}</span></div>`).join('') : '<p style="color:var(--mute)">Win a division to lift your first trophy.</p>'}</div>
+    <div class="card"><h3>🏆 Trophy cabinet</h3>${(save.trophies || []).length ? save.trophies.map(t => `<div class="fx"><span>${t.cup ? KK.CUPS[t.cup].icon : '🏆'} ${esc(t.name || `Division ${t.d} champions`)}</span><span>Season ${t.y}</span></div>`).join('') : '<p style="color:var(--mute)">Win a league or a continental cup to lift your first trophy.</p>'}</div>
     <div class="card"><h3>⚙️ Settings</h3>
-      <div class="row between"><span>Sound effects</span><button class="chip ${KK.settings.mute ? '' : 'on'}" id="c-mute">${KK.settings.mute ? 'Off' : 'On'}</button></div>
+      <div class="row between"><span>Graphics</span><div class="chips"><button class="chip ${KK.settings.gfx === '3d' ? 'on' : ''}" data-gfx="3d">3D</button><button class="chip ${KK.settings.gfx === '2d' ? 'on' : ''}" data-gfx="2d">Classic 2D</button></div></div>
+      <div class="row between" style="margin-top:10px"><span>3D quality</span><div class="chips"><button class="chip ${KK.settings.q === 'high' ? 'on' : ''}" data-q="high">High</button><button class="chip ${KK.settings.q === 'low' ? 'on' : ''}" data-q="low">Low</button></div></
+      <div class="row between" style="margin-top:10px"><span>3D camera</span><div class="chips"><button class="chip ${KK.settings.cam !== 'close' ? 'on' : ''}" data-cam="wide">Wide</button><button class="chip ${KK.settings.cam === 'close' ? 'on' : ''}" data-cam="close">Close</button></div></div>
+      <div class="row between" style="margin-top:10px"><span>Sound effects</span><button class="chip ${KK.settings.mute ? '' : 'on'}" id="c-mute">${KK.settings.mute ? 'Off' : 'On'}</button></div>
       <div class="row between" style="margin-top:10px"><span>Install app</span><button class="chip" id="c-install">How?</button></div>
       <div class="row between" style="margin-top:10px"><span>Start a new career</span><button class="btn sm red" id="c-reset">Reset</button></div>
-      <p style="font-size:12px;color:var(--mute);margin-top:12px">Kente Kickers is free: no ads, no payments. All clubs and players are made up. Progress is saved on this device.</p></div>`;
+      <p style="font-size:12px;color:var(--mute);margin-top:12px">Kente Kickers is free: no ads, no payments. All clubs, leagues, cups and players are made up. Progress is saved on this device.</p></div>`;
   }
+
+  // ---------- cups ----------
+  function cupsHTML() {
+    const cups = save.cups || {};
+    const k = cupTab || (cups.shield && cups.shield.userIn ? 'shield' : 'crown'), cup = cups[k], def = KK.CUPS[k];
+    const tabs = `<div class="chips" style="margin-bottom:10px">${['crown', 'shield'].map(x => `<button class="chip ${x === k ? 'on' : ''}" data-cuptab="${x}">${KK.CUPS[x].icon} ${KK.CUPS[x].name}</button>`).join('')}</div>`;
+    if (!cup) return tabs + '<div class="card"><p>No cup this season.</p></div>';
+    const T = id => KK.cupTeam(cup, id), fl = id => { const t = T(id); return t.country && t.country !== 'GHA' ? KK.flagSVG(KK.country(t.country).flag, 14, 10) : KK.flagSVG(KK.GHANA_FLAG, 14, 10); };
+    const nm = id => `${fl(id)} ${id === 'ME' ? `<b style="color:var(--gold)">${esc(T(id).name)}</b>` : esc(T(id).name)}`;
+    const status = cup.userIn ? (cup.winner === 'ME' ? '🏆 You are the champions!' : cup.userOut ? 'You are out of this season\'s competition.' : '✅ You are in! Play your cup games from Home.') : `Not qualified this season. ${k === 'crown' ? 'Win your top-tier league (or finish in its top places in the strongest leagues) to qualify.' : 'Finish just below the Crown Cup places of a top-tier league to qualify.'}`;
+    const groups = cup.groups.map((g, gi) => `<div><h4 style="margin:4px 0">Group ${'ABCD'[gi]}</h4><table class="tbl"><tr><th style="text-align:left">Club</th><th>P</th><th>GD</th><th>Pts</th></tr>${KK.groupTable(cup, gi).map((r, i) => `<tr class="${r.id === 'ME' ? 'me' : ''} ${i < 2 && cup.md >= 6 ? 'up' : ''}"><td class="tn">${fl(r.id)} ${esc(r.short)}</td><td>${r.P}</td><td>${r.GF - r.GA}</td><td><b>${r.Pts}</b></td></tr>`).join('')}</table></div>`).join('');
+    const ko = ['Quarter-finals', 'Semi-finals', 'Final'].map((n, i) => cup.ko[i] ? `<h4>${n}</h4>${cup.ko[i].map(f => `<div class="fx ${f.h === 'ME' || f.a === 'ME' ? 'me' : ''}"><span class="grow" style="text-align:right">${nm(f.h)}</span><span class="sc" style="margin:0 8px">${f.hs == null ? 'v' : f.hs + ' - ' + f.as}${f.pen ? '<small> p</small>' : ''}</span><span class="grow">${nm(f.a)}</span></div>`).join('')}` : `<h4>${n}</h4><p style="font-size:12px;color:var(--mute);margin:0">To be decided</p>`).join('');
+    return tabs + `<div class="card cupcard"><div class="cuphead"><span class="ic">${def.icon}</span><div><h2 style="margin:0">${def.name}</h2><small style="color:var(--mute)">Season ${cup.year} · ${cup.winner ? 'Winners: ' + esc(T(cup.winner).name) : 'Next: ' + KK.CUP_STAGE[Math.min(cup.md, 8)]}</small></div></div>
+      <p style="font-size:14px">${status}</p>
+      <p style="font-size:12px;color:var(--mute)">16 clubs · 4 groups of 4 (home and away) · top 2 reach the quarter-finals · one-match knockouts and a final (penalties if level). Prize: 🪙${def.win} a win, 🪙${def.prize.toLocaleString()} for the winners.</p></div>
+      <div class="card"><h3>Group stage</h3><div class="grp">${groups}</div></div>
+      <div class="card ko"><h3>Knockouts</h3>${ko}</div>`;
+  }
+
+  // ---------- friendly ----------
+  function leagueOptions(sel) {
+    let o = `<option value="ME" ${sel === 'ME' ? 'selected' : ''}>⭐ My club</option><option value="CUR" ${sel === 'CUR' ? 'selected' : ''}>My league: ${esc(KK.leagueName(save))}</option>`;
+    o += `<optgroup label="Europe">` + KK.allLeagues().map(l => `<option value="${l.code}:${l.tier}" ${sel === l.code + ':' + l.tier ? 'selected' : ''}>${esc(l.country.name)} · ${esc(l.name)}</option>`).join('') + '</optgroup>';
+    return o;
+  }
+  function clubsOf(v) {
+    if (v === 'ME') return [{ id: 'ME', name: save.team.name, short: save.team.short }];
+    if (v === 'CUR') return save.season.teams.filter(t => t.id !== 'ME');
+    const [c, t] = v.split(':'); return KK.leagueClubs(c, +t);
+  }
+  function fillClubs(i) { const v = $('#fr-l' + i).value; $('#fr-c' + i).innerHTML = clubsOf(v).map((t, j) => `<option value="${t.id}" ${i === 1 && j === 0 ? '' : ''}>${esc(t.name)}${t.rating ? ' (' + t.rating + ')' : ''}</option>`).join(''); }
+  function friendlyModal() {
+    modal(`<h3>🤝 Friendly match</h3><div style="text-align:left"><label class="lbl">Home club</label><select class="sel" id="fr-l0">${leagueOptions('ME')}</select><select class="sel" id="fr-c0"></select>
+      <label class="lbl">Away club</label><select class="sel" id="fr-l1">${leagueOptions('ENG:1')}</select><select class="sel" id="fr-c1"></select>
+      <p style="font-size:12px;color:var(--mute)">You control the home side (or your own club if it plays). Friendlies don't change your season or coins.</p></div>
+      <button class="btn block" id="fr-play">▶ PLAY FRIENDLY</button><button class="btn alt block" id="fr-sim" style="margin-top:8px">⏩ Quick result</button><button class="btn alt block" data-close style="margin-top:8px">Cancel</button>`);
+    fillClubs(0); fillClubs(1);
+  }
+  const friendlyTeam = i => { const v = $('#fr-l' + i).value, id = $('#fr-c' + i).value; return id === 'ME' ? { id: 'ME', name: save.team.name, short: save.team.short, c1: save.team.crest.c1, c2: save.team.crest.c2 } : clubsOf(v).find(t => t.id === id); };
+  document.addEventListener('change', e => { if (e.target.id === 'fr-l0') fillClubs(0); if (e.target.id === 'fr-l1') fillClubs(1); });
+  document.addEventListener('input', e => { if (e.target.id === 'f-eusearch') { euFilter = e.target.value; const y = window.scrollY; const pos = e.target.selectionStart; render(); window.scrollTo(0, y); const n = $('#f-eusearch'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } } });
 
   // ---------- actions ----------
   document.addEventListener('click', e => {
@@ -157,14 +240,28 @@
     if (d.pat) { draft.crest.pattern = d.pat; return keepBuilder(); }
     if (d.emb) { draft.crest.emblem = d.emb; return keepBuilder(); }
     if (b.id === 'f-randcrest') { draft.crest = { c1: KK.pick(KK.COLORS), c2: KK.pick(KK.COLORS), pattern: KK.pick(PATTERNS), emblem: KK.pick(EMBLEMS) }; draft.kit.shirt = draft.crest.c1; return keepBuilder(); }
-    if (b.id === 'f-reroll') { draft.players = KK.genSquad(50); return keepBuilder(); }
+    if (b.id === 'f-reroll') { draftSquad(); return keepBuilder(); }
+    if (d.mode) { draft.career = d.mode === 'eu' ? { mode: 'eu', country: draft.career.country || null, tier: draft.career.tier || null } : { mode: 'gh' }; if (d.mode === 'gh' || draft.career.country) draftSquad(); return keepBuilder(); }
+    if (d.country) { const co = KK.country(d.country); const sc = $('#clist') ? $('#clist').scrollTop : 0; draft.career = { mode: 'eu', country: co.code, tier: co.tiers }; draftSquad(); keepBuilder(); if ($('#clist')) $('#clist').scrollTop = sc; return; }
+    if (d.tier) { const sc = $('#clist') ? $('#clist').scrollTop : 0; draft.career.tier = +d.tier; draftSquad(); keepBuilder(); if ($('#clist')) $('#clist').scrollTop = sc; return; }
+    if (d.cuptab) { cupTab = d.cuptab; return render(); }
+    if (d.gfx) { KK.settings.gfx = d.gfx; persist(); return render(); }
+    if (d.q) { KK.settings.q = d.q; persist(); return render(); }
+    if (d.cam) { KK.settings.cam = d.cam; persist(); return render(); }
+    if (d.cupplay) return startMatch({ kind: 'cup', cup: d.cupplay });
+    if (d.cupsim) return cupSim(d.cupplay || d.cupsim);
+    if (b.id === 'h-friendly') return friendlyModal();
+    if (b.id === 'fr-play') { const A = friendlyTeam(0), B = friendlyTeam(1); if (!A || !B || A.id === B.id) return toast('Pick two different clubs'); closeModal(); return startMatch({ kind: 'friendly', A, B }); }
+    if (b.id === 'fr-sim') { const A = friendlyTeam(0), B = friendlyTeam(1); if (!A || !B || A.id === B.id) return toast('Pick two different clubs'); const rA = A.id === 'ME' ? KK.myRating(save) : A.rating, rB = B.id === 'ME' ? KK.myRating(save) : B.rating; const [x, y] = KK.simScore(rA + 1.5, rB); return resultModal({ A, B, a: x, b: y, coins: 0, label: 'Friendly' }); }
     if (b.id === 'f-start') {
       readBuilder(); if (!draft.name.trim()) return toast('Please type a club name');
-      save = KK.newCareer({ name: draft.name.trim(), short: (/^[A-Z]{3}$/.test(draft.short) && !/^(SUX|SEX|ASS|FUK|FUC|DIK|DIC|COK|CUM|FAG|NIG|TIT|POO|WTF|KKK|GAY|PIS|XXX)$/.test(draft.short)) ? draft.short : KK.shortName(draft.name.trim() || 'Kente'), crest: draft.crest, kit: draft.kit }, draft.players);
-      KK.settings = save.settings; KK.sfx.whistle(1); toast('Welcome to Division 6!'); return go('hub');
+      if (draft.career.mode === 'eu' && (!draft.career.country || !draft.career.tier)) return toast('Pick a country and a league');
+      save = KK.newCareer({ name: draft.name.trim(), short: (/^[A-Z]{3}$/.test(draft.short) && !/^(SUX|SEX|ASS|FUK|FUC|DIK|DIC|COK|CUM|FAG|NIG|TIT|POO|WTF|KKK|GAY|PIS|XXX)$/.test(draft.short)) ? draft.short : KK.shortName(draft.name.trim() || 'Kente'), crest: draft.crest, kit: draft.kit }, draft.players, draft.career);
+      save.settings.gfx = save.settings.gfx || KK.settings.gfx; save.settings.q = save.settings.q || KK.settings.q;
+      KK.settings = save.settings; persist(); KK.sfx.whistle(1); toast('Welcome to the ' + KK.leagueName(save) + '!'); return go('hub');
     }
     if (d.len) { KK.settings.len = +d.len; persist(); return render(); }
-    if (b.id === 'h-play') return startMatch();
+    if (b.id === 'h-play') return startMatch({ kind: 'league' });
     if (b.id === 'h-sim') return quickSim();
     if (d.form) { save.formation = d.form; KK.autoPick(save); persist(); toast('Formation ' + d.form); return render(); }
     if (b.id === 's-auto') { KK.autoPick(save); persist(); toast('Best XI picked'); return render(); }
@@ -197,70 +294,128 @@
       selSlot = null; persist(); KK.sfx.click(); return render();
     }
   });
-  document.addEventListener('input', e => { if (e.target.id === 'f-name' || e.target.id === 'f-short') { readBuilder(); $('#pv').innerHTML = KK.crestSVG(draft.crest, 96, draft.short) + KK.kitSVG(draft.kit.shirt, draft.kit.shorts, 80); } });
+  document.addEventListener('input', e => { if (e.target.id === 'f-short') draft.shortEdited = true; if (e.target.id === 'f-name' && !draft.shortEdited) { const sh = $('#f-short'), v = e.target.value.trim(); if (sh && v) sh.value = KK.shortName(v); } if (e.target.id === 'f-name' || e.target.id === 'f-short') { readBuilder(); $('#pv').innerHTML = KK.crestSVG(draft.crest, 96, draft.short) + KK.kitSVG(draft.kit.shirt, draft.kit.shorts, 80); } });
   function readBuilder() { const n = $('#f-name'), s = $('#f-short'); if (n) draft.name = n.value; if (s) draft.short = s.value.toUpperCase(); if (n && !s.value && n.value) draft.short = n.value.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase(); }
   function keepBuilder() { readBuilder(); const y = window.scrollY; render(); window.scrollTo(0, y); }
 
   // ---------- matches ----------
+  const meTeam = () => ({ id: 'ME', name: save.team.name, short: save.team.short, c1: save.team.crest.c1, c2: save.team.crest.c2 });
   function fixtureInfo() {
     const f = KK.nextFixture(save), home = f.h === 'ME', opp = KK.teamById(save, home ? f.a : f.h);
     return { f, home, opp };
   }
-  function resultModal(my, op, info, opp, home, scorers, events) {
-    const r = info.res, title = r === 'W' ? 'VICTORY!' : r === 'D' ? 'DRAW' : 'DEFEAT';
+  const ord = n => n + (['st', 'nd', 'rd'][n - 1] || 'th');
+  // A = home club, B = away club, a/b their goals
+  function resultModal({ A, B, a, b, coins, end, events, label, extra }) {
+    const meSide = A.id === 'ME' ? 0 : B.id === 'ME' ? 1 : -1;
+    const my = meSide === 1 ? b : a, op = meSide === 1 ? a : b;
+    const r = my > op ? 'W' : my < op ? 'L' : 'D';
+    const title = meSide < 0 ? 'FULL TIME' : r === 'W' ? 'VICTORY!' : r === 'D' ? 'DRAW' : 'DEFEAT';
     const names = (events || []).filter(e => e.t === 0).map(e => `${esc(e.name)} ${e.min}'`).join(', ');
     let endHTML = '';
-    if (info.end) {
-      const e = info.end, msg = e.outcome === 'up' ? `🎉 PROMOTED to Division ${e.newDiv}!` : e.outcome === 'down' ? `😞 Relegated to Division ${e.newDiv}.` : e.outcome === 'champ' ? '🏆 CHAMPIONS of Division 1!' : `You stay in Division ${e.newDiv}.`;
-      endHTML = `<div class="card"><h3>Season ${e.year} over</h3><p>You finished <b>${e.pos}${['st', 'nd', 'rd'][e.pos - 1] || 'th'}</b> in Division ${e.oldDiv}.</p><p style="font-size:18px"><b>${msg}</b></p><p>Prize money: 🪙${e.prize.toLocaleString()}</p></div>`;
+    if (end) {
+      const e = end, msg = e.outcome === 'up' ? `🎉 PROMOTED to the ${esc(e.newName)}!` : e.outcome === 'down' ? `😞 Relegated to the ${esc(e.newName)}.` : e.outcome === 'champ' ? `🏆 CHAMPIONS of the ${esc(e.oldName)}!` : `You stay in the ${esc(e.newName)}.`;
+      endHTML = `<div class="card"><h3>Season ${e.year} over</h3><p>You finished <b>${ord(e.pos)}</b> in the ${esc(e.oldName)}.</p><p style="font-size:18px"><b>${msg}</b></p>${e.qual ? `<p>✨ Qualified for the <b>${esc(e.qual)}</b> next season!</p>` : ''}<p>Prize money: 🪙${e.prize.toLocaleString()}</p></div>`;
     }
-    const L = home ? [save.team.short, my, op, opp.short] : [opp.short, op, my, save.team.short];
-    modal(`<h2 style="color:${r === 'W' ? '#76ff03' : r === 'L' ? '#ff5252' : '#fff'}">${title}</h2>
-      <div class="next"><div>${home ? KK.crestSVG(save.team.crest, 54, save.team.short) : crestOf(opp, 54)}<b>${esc(L[0])}</b></div><div class="vs" style="font-size:34px">${L[1]} - ${L[2]}</div><div>${home ? crestOf(opp, 54) : KK.crestSVG(save.team.crest, 54, save.team.short)}<b>${esc(L[3])}</b></div></div>
-      ${names ? `<p style="font-size:13px">⚽ ${names}</p>` : ''}
-      <p style="font-size:18px">+🪙${info.coins.toLocaleString()} coins</p>${endHTML}
+    modal(`${label ? `<small style="color:var(--gold)">${esc(label)}</small>` : ''}<h2 style="color:${meSide < 0 ? '#fff' : r === 'W' ? '#76ff03' : r === 'L' ? '#ff5252' : '#fff'}">${title}</h2>
+      <div class="next"><div>${crestOf(A, 54)}<b>${esc(A.short)}</b></div><div class="vs" style="font-size:34px">${a} - ${b}</div><div>${crestOf(B, 54)}<b>${esc(B.short)}</b></div></div>
+      ${names ? `<p style="font-size:13px">⚽ ${names}</p>` : ''}${extra || ''}
+      ${coins ? `<p style="font-size:18px">+🪙${coins.toLocaleString()} coins</p>` : ''}${endHTML}
       <button class="btn block" data-cont id="res-cont">CONTINUE</button>`);
     KK.sfx.coin();
+  }
+  function scorersFor(n) {
+    const xi = KK.lineupPlayers(save).filter(p => p.pos !== 'GK'), ev = [];
+    for (let i = 0; i < n; i++) { const w = xi.filter(p => p.pos === 'FW').concat(xi); const s = KK.pick(w); ev.push({ t: 0, name: s.name, min: KK.ri(2, 90), id: s.id }); }
+    return ev.sort((x, y) => x.min - y.min);
+  }
+  function leagueDone(my, op, home, opp, ids, events) {
+    const info = KK.recordResult(save, my, op, ids);
+    render();
+    const msgs = (info.cupMsgs || []).filter(Boolean);
+    resultModal({ A: home ? meTeam() : opp, B: home ? opp : meTeam(), a: home ? my : op, b: home ? op : my, coins: info.coins, end: info.end, events, label: KK.leagueName(save, info.end ? info.end.oldDiv : save.season.div), extra: msgs.length ? `<p style="font-size:13px">${msgs.map(esc).join('<br>')}</p>` : '' });
+  }
+  function cupDone(k, my, op, events, ids) {
+    const cup = save.cups[k], f = KK.cupUserFixture(save, cup), home = f.h === 'ME', opp = KK.cupTeam(cup, home ? f.a : f.h), stage = KK.CUP_STAGE[cup.md];
+    const info = KK.cupPlayMd(save, cup, { my, op });
+    (ids || events.filter(e => e.t === 0 && e.id).map(e => e.id)).forEach(id => { const p = save.players.find(x => x.id === id); if (p) p.goals = (p.goals || 0) + 1; });
+    const more = KK.cupAutoAdvance(save); persist(); render();
+    const msgs = [info.pens ? 'Decided on penalties.' : '', info.msg].concat(more.filter(m => m !== info.msg)).filter(Boolean);
+    resultModal({ A: home ? meTeam() : opp, B: home ? opp : meTeam(), a: home ? my : op, b: home ? op : my, coins: info.coins, events, label: `${KK.CUPS[k].icon} ${KK.CUPS[k].name} · ${stage}`, extra: msgs.length ? `<p style="font-size:14px"><b>${msgs.map(esc).join('<br>')}</b></p>` : '' });
   }
   function quickSim() {
     const { home, opp } = fixtureInfo();
     const mr = KK.myRating(save) + (home ? 1.5 + save.stadium * 0.6 : 0), orr = opp.rating + (home ? 0 : 1.5);
-    let [a, b] = KK.simScore(mr, orr); const my = a, op = b;
-    const xi = KK.lineupPlayers(save).filter(p => p.pos !== 'GK'); const events = [];
-    for (let i = 0; i < my; i++) { const w = xi.filter(p => p.pos === 'FW').concat(xi); const s = KK.pick(w); events.push({ t: 0, name: s.name, min: KK.ri(2, 90), id: s.id }); }
-    events.sort((x, y) => x.min - y.min);
-    const info = KK.recordResult(save, my, op, events.map(e => e.id));
-    render(); resultModal(my, op, info, opp, home, null, events);
+    const [my, op] = KK.simScore(mr, orr), events = scorersFor(my);
+    leagueDone(my, op, home, opp, events.map(e => e.id), events);
   }
-  function startMatch() {
-    const { home, opp } = fixtureInfo();
+  function cupSim(k) {
+    const cup = save.cups[k], f = KK.cupUserFixture(save, cup); if (!f) return;
+    const home = f.h === 'ME', opp = KK.cupTeam(cup, home ? f.a : f.h);
+    const [my, op] = KK.simScore(KK.myRating(save) + (home ? 1.5 + save.stadium * 0.6 : 0), opp.rating + (home ? 0 : 1.5));
+    cupDone(k, my, op, scorersFor(my));
+  }
+  function myCfgOf(home) { return { name: save.team.name, short: save.team.short, shirt: save.team.kit.shirt, shorts: save.team.kit.shorts, gk: '#fb8c00', players: KK.lineupPlayers(save), formation: save.formation, rating: KK.myRating(save) + (home ? 1.5 + save.stadium * 0.6 : 0) }; }
+  function aiCfgOf(t, home, vsShirt) {
+    let shirt = t.c1, shorts = t.c2;
+    if (vsShirt && KK.colorDist(shirt, vsShirt) < 120) { shirt = KK.colorDist(vsShirt, '#ffffff') < 150 ? '#111111' : '#ffffff'; shorts = t.c1; }
+    return { name: t.name, short: t.short, shirt, shorts, gk: '#fb8c00', players: KK.oppSquad(t), formation: t.form || '4-4-2', rating: t.rating + (home ? 1.5 : 0) };
+  }
+  async function get3D() {
+    const q = KK.settings.q;
+    if (KK.r3inst && KK.r3inst.q === q) return KK.r3inst;
+    if (KK.r3inst) { try { KK.r3inst.dispose(); } catch (e) {} KK.r3inst = null; const old = $('#pitch3d'), fresh = old.cloneNode(false); old.replaceWith(fresh); }
+    const mod = await import('./gfx3d.js');
+    KK.r3inst = mod.create($('#pitch3d'), { quality: q });
+    return KK.r3inst;
+  }
+  let starting = false;
+  async function startMatch(ctx) {
+    if (match || starting) return;
+    starting = true;
+    try { await startMatchInner(ctx); } finally { starting = false; }
+  }
+  async function startMatchInner(ctx) {
     KK.sfx.unlock();
-    const xi = KK.lineupPlayers(save);
-    let oppShirt = opp.c1, oppShorts = opp.c2;
-    if (KK.colorDist(oppShirt, save.team.kit.shirt) < 120) { oppShirt = KK.colorDist(save.team.kit.shirt, '#ffffff') < 150 ? '#111111' : '#ffffff'; oppShorts = opp.c1; }
-    const myCfg = { name: save.team.name, short: save.team.short, shirt: save.team.kit.shirt, shorts: save.team.kit.shorts, gk: '#fb8c00', players: xi, formation: save.formation, rating: KK.myRating(save) + (home ? 1.5 + save.stadium * 0.6 : 0) };
-    const oppCfg = { name: opp.name, short: opp.short, shirt: oppShirt, shorts: oppShorts, gk: KK.colorDist(myCfg.gk, oppShirt) < 120 ? '#00e5ff' : '#c6ff00', players: KK.oppSquad(opp), formation: opp.form || '4-4-2', rating: opp.rating + (home ? 0 : 1.5) };
+    // T0 = the side you control, T1 = the other. homeIs0 = T0 plays at home.
+    let T0, T1, homeIs0, label;
+    if (ctx.kind === 'league') { const fi = fixtureInfo(); T0 = meTeam(); T1 = fi.opp; homeIs0 = fi.home; label = KK.leagueName(save); }
+    else if (ctx.kind === 'cup') { const cup = save.cups[ctx.cup], f = KK.cupUserFixture(save, cup); if (!f) return; homeIs0 = f.h === 'ME'; T0 = meTeam(); T1 = KK.cupTeam(cup, homeIs0 ? f.a : f.h); label = KK.CUPS[ctx.cup].name; }
+    else { if (ctx.B.id === 'ME') { T0 = ctx.B; T1 = ctx.A; homeIs0 = false; } else { T0 = ctx.A; T1 = ctx.B; homeIs0 = true; } label = 'Friendly'; }
+    const cfg0 = T0.id === 'ME' ? myCfgOf(homeIs0) : aiCfgOf(T0, homeIs0);
+    const cfg1 = T1.id === 'ME' ? myCfgOf(!homeIs0) : aiCfgOf(T1, !homeIs0, cfg0.shirt);
+    if (T1.id === 'ME' && KK.colorDist(cfg1.shirt, cfg0.shirt) < 120) { cfg0.shirt = KK.colorDist(cfg1.shirt, '#ffffff') < 150 ? '#111111' : '#ffffff'; }
+    cfg1.gk = KK.colorDist(cfg0.gk, cfg1.shirt) < 120 || KK.colorDist(cfg0.gk, cfg0.shirt) < 120 ? '#00e5ff' : '#c6ff00';
+    const H = homeIs0 ? T0 : T1, Aw = homeIs0 ? T1 : T0;
     $('#match').classList.remove('hidden'); document.body.style.overflow = 'hidden';
-    $('#h-crest').innerHTML = home ? KK.crestSVG(save.team.crest, 22, save.team.short) : crestOf(opp, 22);
-    $('#a-crest').innerHTML = home ? crestOf(opp, 22) : KK.crestSVG(save.team.crest, 22, save.team.short);
-    $('#h-name').textContent = home ? save.team.short : opp.short; $('#a-name').textContent = home ? opp.short : save.team.short;
+    $('#h-crest').innerHTML = crestOf(H, 22); $('#a-crest').innerHTML = crestOf(Aw, 22);
+    $('#h-name').textContent = H.short; $('#a-name').textContent = Aw.short;
     $('#m-mute').textContent = KK.settings.mute ? '🔇' : '🔊';
     $('#m-overlay').classList.add('hidden');
     try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('any').catch(() => {}); } catch (e) {}
+    let r3 = null;
+    if (KK.settings.gfx === '3d') {
+      try { r3 = await get3D(); } catch (e) { console.warn('3D unavailable, using 2D', e && e.message); KK.r3fail = String(e && e.message || e); toast('3D not supported here, using Classic 2D'); r3 = null; }
+    }
+    if (r3) r3.zoom = KK.settings.cam === 'close' ? 0.72 : 1;
+    $('#pitch3d').classList.toggle('hidden', !r3); $('#match').classList.toggle('is3d', !!r3);
     let lastHud = '';
     match = new KK.Match($('#pitch'), {
-      my: myCfg, opp: oppCfg, lengthMin: KK.settings.len || 3, kickoffTeam: home ? 0 : 1,
+      my: cfg0, opp: cfg1, lengthMin: KK.settings.len || 3, kickoffTeam: homeIs0 ? 0 : 1, r3,
       onHud(m) {
-        const sc = home ? `${m.score[0]} - ${m.score[1]}` : `${m.score[1]} - ${m.score[0]}`, tm = m.minute() + "'";
+        const sc = homeIs0 ? `${m.score[0]} - ${m.score[1]}` : `${m.score[1]} - ${m.score[0]}`, tm = m.minute() + "'";
         const key = sc + tm + (m.ball.owner && m.ball.owner.t === 0 ? 1 : 0);
         if (key !== lastHud) { lastHud = key; $('#h-score').textContent = sc; $('#h-time').textContent = m.state === 'end' ? 'FT' : tm; $('#b-tackle').innerHTML = m.ball.owner && m.ball.owner.t === 0 ? 'SPRINT<br><small>hold</small>' : 'TACKLE<br><small>/ sprint</small>'; }
       },
       onEnd(res) {
-        const info = KK.recordResult(save, res.my, res.opp, res.scorers);
-        closeMatch(); render(); resultModal(res.my, res.opp, info, opp, home, res.scorers, res.events);
+        closeMatch();
+        if (ctx.kind === 'league') return leagueDone(res.my, res.opp, homeIs0, T1, res.scorers, res.events);
+        if (ctx.kind === 'cup') return cupDone(ctx.cup, res.my, res.opp, res.events, res.scorers);
+        render();
+        resultModal({ A: H, B: Aw, a: homeIs0 ? res.my : res.opp, b: homeIs0 ? res.opp : res.my, coins: 0, events: T0.id === 'ME' ? res.events : [], label });
       },
     });
-    match.subsUsed = 0; match.bench = save.players.filter(p => !save.lineup.includes(p.id));
+    match.subsUsed = 0; match.bench = T0.id === 'ME' ? save.players.filter(p => !save.lineup.includes(p.id)) : [];
     KK.currentMatch = match;
   }
   function closeMatch() { if (match) match.destroy(); match = null; KK.currentMatch = null; $('#match').classList.add('hidden'); document.body.style.overflow = ''; }
