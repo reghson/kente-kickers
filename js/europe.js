@@ -124,11 +124,12 @@
   const STYLE_KEYS = Object.keys(S);
   // player name for a nationality style spec like 'nl|fr' ('gh' keeps the Ghana mix)
   KK.natName = function (r, spec) {
+    KK._nat = 'gh';
     if (!spec || spec === 'gh') return KK.genName(r);
     const x = r(), styles = spec.split('|');
-    if (x < 0.74) return KK.styleName(r, pk(r, styles));
+    if (x < 0.74) { const st = pk(r, styles); KK._nat = st; return KK.styleName(r, st); }
     if (x < 0.84) return KK.genName(r);
-    return KK.styleName(r, pk(r, STYLE_KEYS));
+    const st = pk(r, STYLE_KEYS); KK._nat = st; return KK.styleName(r, st);
   };
 
   // ---------- clubs (deterministic per country and tier) ----------

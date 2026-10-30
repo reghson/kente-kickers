@@ -61,7 +61,8 @@ KK.statsFor = function (pos, rating, r = Math.random) {
 
 KK.genPlayer = function (pos, rating, r = Math.random, style) {
   rating = KK.clamp(Math.round(rating), 30, 99);
-  return { id: KK.uid() + Math.floor(r() * 1e6).toString(36), name: KK.natName ? KK.natName(r, style) : KK.genName(r), pos, rating, age: 17 + Math.floor(r() * 17), stats: KK.statsFor(pos, rating, r), goals: 0, apps: 0 };
+  KK._nat = 'gh'; const nm = KK.natName ? KK.natName(r, style) : KK.genName(r);
+  return { id: KK.uid() + Math.floor(r() * 1e6).toString(36), name: nm, nat: KK._nat || 'gh', fit: 100, pos, rating, age: 17 + Math.floor(r() * 17), stats: KK.statsFor(pos, rating, r), goals: 0, apps: 0 };
 };
 
 KK.genSquad = function (base = 50, style) {
