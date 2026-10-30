@@ -28,7 +28,7 @@
     $('#tb-name').textContent = save.team.name;
     $('#tb-div').innerHTML = `${flagOf(save, 16, 11)} ${esc(KK.leagueName(save))} · Season ${save.season.year}`;
     $('#tb-coins').textContent = save.coins.toLocaleString(); $('#tb-gold').textContent = save.gold; $('#tb-lvl').textContent = 'Lv ' + KK.meta.levelInfo(save).lv;
-    const nv = { training: 'squad', kit: 'club', stadium: 'club', settings: 'club' }[view] || view; document.querySelectorAll('#bottomnav button').forEach(b => b.classList.toggle('on', b.dataset.go === nv));
+    const nv = { training: 'squad', kit: 'club', stadium: 'club', settings: 'club', shop: 'club' }[view] || view; document.querySelectorAll('#bottomnav button').forEach(b => b.classList.toggle('on', b.dataset.go === nv));
   }
   const flagOf = (sv, w = 24, h = 16) => KK.flagSVG(KK.career(sv).mode === 'eu' ? KK.country(sv.career.country).flag : KK.GHANA_FLAG, w, h);
   function go(v) { view = v; selSlot = null; render(); window.scrollTo(0, 0); }
@@ -38,7 +38,7 @@
     updateTop();
     const el = $('#screen');
     if (!save || view === 'builder') el.innerHTML = builderHTML();
-    else el.innerHTML = ({ hub: hubHTML, squad: squadHTML, training: trainingHTML, market: marketHTML, league: leagueHTML, club: clubHTML, kit: kitHTML, stadium: stadiumHTML, settings: settingsHTML, cups: cupsHTML }[view] || hubHTML)();
+    else el.innerHTML = ({ hub: hubHTML, squad: squadHTML, training: trainingHTML, market: marketHTML, league: leagueHTML, club: clubHTML, kit: kitHTML, stadium: stadiumHTML, settings: settingsHTML, cups: cupsHTML, shop: shopHTML }[view] || hubHTML)();
   }
 
   // ---------- builder ----------
@@ -122,7 +122,8 @@
       tile('market', '💱', 'Transfers', `${save.market.length} players listed`),
       tile('training', '🏋️', 'Training', 'Train &amp; physio'),
       tile('stadium', '🏟️', 'Stadium', esc(KK.STADIUM[save.stadium].name)),
-      tile('settings', '⚙️', 'Settings', 'Graphics &amp; sound'),
+      tile('shop', '🛒', 'Shop', 'Coin &amp; Gold packs'),
+      tile('settings', '⚙️', 'Settings', 'Difficulty, graphics, sound'),
     ].join('');
     const hist = (save.history || []).slice(-6).reverse();
     const cupCards = ['crown', 'shield'].map(k => {
@@ -226,7 +227,7 @@
       <label class="lbl">Pattern &amp; trim colour</label><div class="swatches">${sw('kit', 'c2', k.c2)}</div>
       <label class="lbl">Shorts</label><div class="swatches">${sw('kit', 'shorts', k.shorts)}</div>
       <label class="lbl">Socks</label><div class="swatches">${sw('kit', 'socks', k.socks)}</div>
-      <p style="font-size:12px;color:var(--mute)">${kitTab === 'away' ? 'Your away kit is worn automatically when your home shirt clashes with the opponent.' : 'In 3D matches the shirt, shorts and socks colours are used; patterns show on menus and cards.'}</p>`;
+      <p style="font-size:12px;color:var(--mute)">${kitTab === 'away' ? 'Your away kit is worn automatically when your home shirt clashes with the opponent.' : 'Your pattern and second colour show on your players in 3D matches too.'}</p>`;
     return `<div class="card kited"><div class="row between"><h3>Kit &amp; crest editor</h3><button class="btn sm alt" data-go="club">Done</button></div>${tabs}${stage}${ctl}</div>`;
   }
   // ---------- stadium ----------
@@ -269,12 +270,34 @@
       <div class="row between" style="margin-top:10px"><span>3D quality</span><div class="chips"><button class="chip ${KK.settings.q === 'high' ? 'on' : ''}" data-q="high">High</button><button class="chip ${KK.settings.q === 'low' ? 'on' : ''}" data-q="low">Low</button></div></div>
       <div class="row between" style="margin-top:10px"><span>3D camera</span><div class="chips"><button class="chip ${KK.settings.cam !== 'close' ? 'on' : ''}" data-cam="wide">Wide</button><button class="chip ${KK.settings.cam === 'close' ? 'on' : ''}" data-cam="close">Close</button></div></div>
       <div class="row between" style="margin-top:10px"><span>Weather</span><div class="chips">${[['auto', 'Random'], ['clear', 'Clear'], ['rain', 'Rain'], ['snow', 'Snow']].map(([k, t]) => `<button class="chip ${(KK.settings.weather || 'auto') === k ? 'on' : ''}" data-wx="${k}">${t}</button>`).join('')}</div></div>
+      <div class="row between" style="margin-top:10px"><span>Difficulty</span><div class="chips">${DIFF.map((t, i) => `<button class="chip ${diffOf() === i ? 'on' : ''}" data-diff="${i}">${t}</button>`).join('')}</div></div>
+      <div class="row between" style="margin-top:10px"><span>Offside</span><button class="chip ${KK.settings.offside === false ? '' : 'on'}" id="c-off">${KK.settings.offside === false ? 'Off' : 'On'}</button></div>
+      <div class="row between" style="margin-top:10px"><span>Goal replays</span><button class="chip ${KK.settings.replays === false ? '' : 'on'}" id="c-rep">${KK.settings.replays === false ? 'Off' : 'On'}</button></div>
+      ${KK.ads && KK.ads.privacyOptionsRequired() ? '<div class="row between" style="margin-top:10px"><span>Ad privacy choices</span><button class="chip" id="c-adpriv">Manage</button></div>' : ''}
+      <div class="row between" style="margin-top:10px"><span>Controls tutorial</span><button class="chip" id="c-tut">Show again</button></div>
       <div class="row between" style="margin-top:10px"><span>Commentary</span><button class="chip ${KK.settings.noComm ? '' : 'on'}" id="c-comm">${KK.settings.noComm ? 'Off' : 'On'}</button></div>
       <div class="row between" style="margin-top:10px"><span>Sound effects</span><button class="chip ${KK.settings.mute ? '' : 'on'}" id="c-mute">${KK.settings.mute ? 'Off' : 'On'}</button></div>
       <div class="row between" style="margin-top:10px"><span>Manager story</span><button class="chip" id="c-story">Replay</button></div>
       <div class="row between" style="margin-top:10px"><span>Install app</span><button class="chip" id="c-install">How?</button></div>
       <div class="row between" style="margin-top:10px"><span>Start a new career</span><button class="btn sm red" id="c-reset">Reset</button></div>
-      <p style="font-size:12px;color:var(--mute);margin-top:12px">Kente Kickers is free: no ads and no payments. Coins and Gold Kente are earned only by playing. All clubs, leagues, cups and players are made up. Progress is saved on this device.</p></div>`;
+      <p style="font-size:12px;color:var(--mute);margin-top:12px">Kente Kickers is free. There are no ads on the website. Everything, including Coins and Gold Kente, can be earned by playing. All clubs, leagues, cups and players are made up. Progress is saved only on this device. <a href="privacy.html" target="_blank" rel="noopener" style="color:var(--gold)">Privacy policy</a> · v${(KK.CONFIG && KK.CONFIG.APP_VERSION) || '1.0.0'}</p></div>`;
+  }
+  // ---------- shop ----------
+  function shopHTML() {
+    const sh = KK.shop, live = sh && sh.can(), st = sh ? sh.state : {};
+    if (live) sh.init();
+    const pack = p => { const price = live ? sh.price(p) : null;
+      return `<div class="shp k-${p.kind}">${p.tag ? `<i class="shp-tag">${p.tag}</i>` : ''}<div class="shp-ic">${p.kind === 'gold' ? '<span class="goldk big"></span>' : p.ic}</div><b>${p.amount.toLocaleString()} ${p.kind === 'coins' ? 'Coins' : 'Gold'}</b><small>${esc(p.name)}</small>
+        ${live ? `<button class="btn sm" data-iap="${p.id}" ${!st.ready || st.busy || !price ? 'disabled' : ''}>${price ? esc(price) : '…'}</button>` : `<button class="btn sm alt" disabled>Coming soon</button><small class="shp-ph">${p.ph}*</small>`}</div>`; };
+    const note = live ? (st.err ? `⚠️ ${esc(st.err)}` : st.ready ? 'Prices are set by Google Play in your currency. Payment is handled by Google Play.' : 'Connecting to Google Play…')
+      : (sh && sh.isNative() ? 'Packs are coming soon.' : 'Packs will only be offered in the Android app from Google Play, never on the website.') + ' *Placeholder prices; real prices will come from Google Play.';
+    return `<div class="card shop"><div class="row between"><h3>🛒 Shop</h3><span class="row" style="gap:6px"><span class="coins">${save.coins.toLocaleString()}</span><span class="goldk">${save.gold}</span></span></div>
+      <p style="font-size:13px;color:var(--mute);margin:4px 0">Optional packs with fixed amounts: no random rewards, no loot boxes. ${live ? '' : '<b style="color:var(--gold)">Coming soon.</b>'}</p>
+      <div class="shp-grid">${(sh ? sh.PACKS : []).map(pack).join('')}</div>
+      <p style="font-size:12px;color:var(--mute)">${note}</p>
+      ${live ? '<button class="btn alt sm" id="iap-restore">Restore purchases</button>' : ''}</div>
+      <div class="card"><h3>📺 Ads</h3><p style="font-size:13px;color:var(--mute);margin:4px 0">No ads on the website, and never during a match. ${KK.ads && KK.ads.can() ? 'In the app you may see a short ad between matches (at most one every 3 matches), and you can choose to watch one after a match for bonus coins.' : 'There are no ads in this version.'}</p></div>
+      <div class="card"><h3>🆓 Earn for free</h3><ul class="earn"><li>🪙 Every match pays coins: more for wins, goals and a bigger stadium</li><li>🎯 Season objectives and 🏅 achievements give Coins and Gold</li><li>⬆️ Club level-ups give 400 Coins + 3 Gold each</li><li>🏆 Promotions and cup runs pay big bonuses</li><li>💱 Sell players you don't need</li></ul></div>`;
   }
   function showStory(i) {
     const st = KK.meta.STORY, pg = st[i], last = i === st.length - 1;
@@ -365,6 +388,13 @@
     if (b.id === 'st-next') { const i = +d.i + 1; if (i < KK.meta.STORY.length) return showStory(i); save.story.seen = true; persist(); closeModal(); return; }
     if (b.id === 'st-skip') { save.story.seen = true; persist(); closeModal(); return; }
     if (b.id === 'c-story') return showStory(0);
+    if (d.diff != null) { KK.settings.diff = +d.diff; persist(); if ($('#pm-go') && pendingCtx) return prematch(pendingCtx); return render(); }
+    if (b.id === 'c-off') { KK.settings.offside = KK.settings.offside === false; persist(); return render(); }
+    if (b.id === 'c-rep') { KK.settings.replays = KK.settings.replays === false; persist(); return render(); }
+    if (b.id === 'c-adpriv') { KK.ads.showPrivacyOptions(); return; }
+    if (b.id === 'c-tut') { KK.settings.tutDone = false; persist(); return toast('The controls tutorial will show at your next kick-off.'); }
+    if (d.iap) { KK.shop.buy(d.iap); return render(); }
+    if (b.id === 'iap-restore') { KK.shop.restore().then(ok => toast(ok ? 'Checked Google Play for purchases.' : 'Store not ready.')); return; }
     if (b.id === 'c-comm') { KK.settings.noComm = !KK.settings.noComm; persist(); return render(); }
     if (d.kittab) { kitTab = d.kittab; return keepScroll(); }
     if (d.ksw) { const [tgt, key] = d.ksw.split(':'), o = tgt === 'crest' ? save.team.crest : kitTab === 'away' ? save.team.away : save.team.kit; o[key] = d.c; kitEdited(); return keepScroll(); }
@@ -402,7 +432,8 @@
     if (b.id === 'c-reset') return modal(`<h3>Start again?</h3><p>This deletes your club and all progress on this device.</p><div class="row"><button class="btn alt grow" data-close>Cancel</button><button class="btn red grow" id="c-reset2">Delete & restart</button></div>`);
     if (b.id === 'c-reset2') { localStorage.removeItem(KK.SAVE_KEY); save = null; draft = null; closeModal(); return go('builder'); }
     if (d.close !== undefined) { closeModal(); return; }
-    if (d.cont !== undefined) { closeModal(); return go('hub'); }
+    if (b.id === 'ad-bonus') { resAd = false; b.disabled = true; KK.ads.showReward().then(ok => { if (ok) { save.coins += KK.CONFIG.REWARD_COINS; persist(); updateTop(); toast(`+${KK.CONFIG.REWARD_COINS} bonus coins!`); } showResPage(); }); return; }
+    if (d.cont !== undefined) { closeModal(); if (b.id === 'res-cont' && KK.ads) KK.ads.betweenMatches(save).then(() => persist()); return go('hub'); }
     if (d.pid && selSlot !== null && view === 'squad') {
       const pid = d.pid, other = save.lineup.indexOf(pid);
       if (other >= 0) { [save.lineup[selSlot], save.lineup[other]] = [save.lineup[other], save.lineup[selSlot]]; } else save.lineup[selSlot] = pid;
@@ -450,7 +481,7 @@
   function statsHTML(st, flip) {
     const h = flip ? 1 : 0, a = 1 - h, tot = st.poss[0] + st.poss[1] || 1, pp = [Math.round(st.poss[0] / tot * 100)]; pp[1] = 100 - pp[0];
     const row = (lab, x, y, pct) => { const s = x + y || 1; return `<div class="srow"><b>${x}${pct ? '%' : ''}</b><div class="sbar l"><i style="width:${x / s * 100}%"></i></div><span>${lab}</span><div class="sbar r"><i style="width:${y / s * 100}%"></i></div><b>${y}${pct ? '%' : ''}</b></div>`; };
-    return `<div class="stats">${row('Possession', pp[h], pp[a], 1)}${row('Shots', st.shots[h], st.shots[a])}${row('On target', st.sot[h], st.sot[a])}${row('Passes', st.passes[h], st.passes[a])}${row('Tackles', st.tackles[h], st.tackles[a])}${row('Saves', st.saves[h], st.saves[a])}</div>`;
+    return `<div class="stats">${row('Possession', pp[h], pp[a], 1)}${row('Shots', st.shots[h], st.shots[a])}${row('On target', st.sot[h], st.sot[a])}${row('Passes', st.passes[h], st.passes[a])}${row('Tackles', st.tackles[h], st.tackles[a])}${row('Saves', st.saves[h], st.saves[a])}${st.fouls ? row('Fouls', st.fouls[h], st.fouls[a]) : ''}</div>`;
   }
   // A = home club, B = away club, a/b their goals. res = live match result (stats, motm) or null for sims. rw = rewards
   let resPages = [], resIdx = 0;
@@ -491,12 +522,14 @@
         ${rw && rw.ach.length ? `<div class="rw-list">${rw.ach.map(x => `<div>${x.ic} Achievement: <b>${esc(x.name)}</b> · +🪙${x.c} +${x.g}${GK}</div>`).join('')}</div>` : ''}
         ${extra || ''}${endHTML}`);
     }
-    resPages = pages; resIdx = 0; showResPage();
+    resPages = pages; resIdx = 0; resAd = !!rw; showResPage();
     KK.sfx.coin();
   }
+  let resAd = false; // optional rewarded ad (Android app with ADS_ENABLED only; KK.ads.rewardReady() is false otherwise)
   function showResPage() {
     const last = resIdx === resPages.length - 1;
-    modal(`<div class="steps">${resPages.map((_, i) => `<i class="${i === resIdx ? 'on' : ''}"></i>`).join('')}</div>${resPages[resIdx]}
+    const adBtn = last && resAd && KK.ads && KK.ads.rewardReady() ? `<button class="btn alt block" id="ad-bonus" style="margin-bottom:8px">🎬 Watch a short ad: +${KK.CONFIG.REWARD_COINS} coins (optional)</button>` : '';
+    modal(`<div class="steps">${resPages.map((_, i) => `<i class="${i === resIdx ? 'on' : ''}"></i>`).join('')}</div>${resPages[resIdx]}${adBtn}
       ${last ? '<button class="btn block" data-cont id="res-cont">CONTINUE</button>' : '<button class="btn block" id="res-next">NEXT ▶</button>'}`, 'matchday');
   }
   function scorersFor(n) {
@@ -506,7 +539,7 @@
   }
   const motmMine = res => !!(res && res.motm && res.motm.t === 0 && save.players.some(p => p.id === res.motm.id));
   function rewardsFor(my, op, res, end) {
-    const rw = KK.meta.afterMatch(save, { my, op, played: !!res, motmMine: motmMine(res) });
+    const rw = KK.meta.afterMatch(save, { my, op, played: !!res, motmMine: motmMine(res), knocks: res && res.knocks ? res.knocks.filter(k => k.t === 0).map(k => k.id) : [] });
     if (end) { if (end.outcome === 'up') rw.ach.push(...KK.meta.event(save, 'promoted')); if (end.outcome === 'champ' || end.pos === 1) rw.ach.push(...KK.meta.event(save, 'champion')); }
     ['crown', 'shield'].forEach(k => { if (save.cups && save.cups[k] && save.cups[k].winner === 'ME') rw.ach.push(...KK.meta.event(save, 'cup')); });
     KK.meta.ensure(save); persist(); return rw;
@@ -549,10 +582,12 @@
   }
   const WX = { clear: '🌙 Clear night', rain: '🌧️ Rain', snow: '❄️ Snow' };
   let pendingCtx = null;
+  const DIFF = ['Easy', 'Normal', 'Hard', 'Legend'];
+  function diffOf() { const v = KK.settings.diff; return v == null ? 1 : +v; }
   function prematch(ctx) {
     const R = resolveCtx(ctx); if (!R) return;
     const wset = KK.settings.weather || 'auto', rw = Math.random();
-    ctx.weather = wset === 'auto' ? (rw < 0.55 ? 'clear' : rw < 0.78 ? 'rain' : 'snow') : wset;
+    if (!ctx.weather) ctx.weather = wset === 'auto' ? (rw < 0.55 ? 'clear' : rw < 0.78 ? 'rain' : 'snow') : wset;
     pendingCtx = ctx;
     const H = R.homeIs0 ? R.T0 : R.T1, Aw = R.homeIs0 ? R.T1 : R.T0;
     const xiOf = t => t.id === 'ME' ? KK.lineupPlayers(save) : KK.oppSquad(t);
@@ -562,7 +597,7 @@
     const homeSt = R.T0.id === 'ME' ? R.homeIs0 : R.T1.id === 'ME' ? !R.homeIs0 : false;
     const ground = homeSt ? KK.STADIUM[save.stadium].name : 'Away ground';
     modal(`<small class="pg">MATCH DAY · ${esc(R.label)}</small>
-      <div class="pm"><div class="pm-side">${col(H)}</div><div class="pm-mid"><div class="pm-vs">VS</div><div class="pm-info"><span>${WX[ctx.weather]}</span><span>🏟️ ${esc(ground)}</span><span>⏱️ ${KK.settings.len || 3} min</span><span>🎮 You: ${esc(R.T0.short)}</span></div><button class="playbtn pm-go" id="pm-go">KICK OFF ▶</button>${R.T0.id === 'ME' ? '<button class="btn sm alt" data-go="squad">👕 Team</button>' : ''}<button class="btn sm alt" data-close>Back</button></div><div class="pm-side">${col(Aw)}</div></div>`, 'matchday wide');
+      <div class="pm"><div class="pm-side">${col(H)}</div><div class="pm-mid"><div class="pm-vs">VS</div><div class="pm-info"><span>${WX[ctx.weather]}</span><span>🏟️ ${esc(ground)}</span><span>⏱️ ${KK.settings.len || 3} min</span><span>🎮 You: ${esc(R.T0.short)}</span></div><div class="chips pm-diff">${DIFF.map((t, i) => `<button class="chip ${diffOf() === i ? 'on' : ''}" data-diff="${i}">${t}</button>`).join('')}</div><button class="playbtn pm-go" id="pm-go">KICK OFF ▶</button>${R.T0.id === 'ME' ? '<button class="btn sm alt" data-go="squad">👕 Team</button>' : ''}<button class="btn sm alt" data-close>Back</button></div><div class="pm-side">${col(Aw)}</div></div>`, 'matchday wide');
   }
   function halfTime(m, homeIs0, H, Aw) {
     if (match !== m || m.state !== 'half') return;
@@ -573,11 +608,13 @@
   }
   let sayTO = 0;
   function say(txt) { if (KK.settings.noComm) return; const c = $('#commentary'); c.textContent = txt; c.classList.remove('hidden'); clearTimeout(sayTO); sayTO = setTimeout(() => c.classList.add('hidden'), 2600); }
-  function myCfgOf(home, opp) { const k = !home && opp && opp.c1 && KK.colorDist(save.team.kit.shirt, opp.c1) < 120 && save.team.away ? save.team.away : save.team.kit; return { name: save.team.name, short: save.team.short, shirt: k.shirt, shorts: k.shorts, socks: k.socks, gk: '#fb8c00', players: KK.lineupPlayers(save), formation: save.formation, rating: KK.myRating(save) + (home ? 1.5 + save.stadium * 0.6 : 0) }; }
+  function myCfgOf(home, opp) { const k = !home && opp && opp.c1 && KK.colorDist(save.team.kit.shirt, opp.c1) < 120 && save.team.away ? save.team.away : save.team.kit; return { name: save.team.name, short: save.team.short, shirt: k.shirt, shorts: k.shorts, socks: k.socks, pattern: k.pattern || 'plain', c2: k.c2 || '#ffffff', gk: '#fb8c00', players: KK.lineupPlayers(save), formation: save.formation, rating: KK.myRating(save) + (home ? 1.5 + save.stadium * 0.6 : 0) }; }
   function aiCfgOf(t, home, vsShirt) {
     let shirt = t.c1, shorts = t.c2;
     if (vsShirt && KK.colorDist(shirt, vsShirt) < 120) { shirt = KK.colorDist(vsShirt, '#ffffff') < 150 ? '#111111' : '#ffffff'; shorts = t.c1; }
-    return { name: t.name, short: t.short, shirt, shorts, gk: '#fb8c00', players: KK.oppSquad(t), formation: t.form || '4-4-2', rating: t.rating + (home ? 1.5 : 0) };
+    const hsh = [...t.name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 3), pats = ['plain', 'plain', 'plain', 'stripes', 'hoops', 'plain', 'sash', 'halves', 'pinstripe', 'plain'];
+    const pattern = shirt === t.c1 ? pats[hsh % pats.length] : 'plain', c2 = KK.colorDist(t.c2, shirt) > 90 ? t.c2 : (KK.colorDist(shirt, '#ffffff') < 150 ? '#111111' : '#ffffff');
+    return { name: t.name, short: t.short, shirt, shorts, pattern, c2, gk: '#fb8c00', players: KK.oppSquad(t), formation: t.form || '4-4-2', rating: t.rating + (home ? 1.5 : 0) };
   }
   async function get3D() {
     const q = KK.settings.q;
@@ -631,6 +668,7 @@
           const mb = $('#m-ment'); mb.querySelector('span').textContent = MENT[m.ment[0]]; mb.className = ['def', 'bal', 'att'][m.ment[0]];
         }
         $('#joybase').classList.toggle('sprint', m.sprinting());
+        const rpOn = m.state === 'play' && m.hasReplay(); if (rpOn !== m._rpOn) { m._rpOn = rpOn; $('#m-rplus').classList.toggle('hidden', !rpOn); }
         if (m.cfg.onTick) m.cfg.onTick(m);
       },
       onSay: say,
@@ -645,9 +683,30 @@
     });
     match.setMent(KK.settings.ment == null ? 1 : KK.settings.ment);
     match.subsUsed = 0; match.bench = T0.id === 'ME' ? save.players.filter(p => !save.lineup.includes(p.id)) : [];
-    KK.currentMatch = match;
+    KK.currentMatch = match; $('#m-rplus').classList.add('hidden');
+    if (!KK.settings.tutDone && !ctx.noTut) tutorial(0);
   }
-  function closeMatch() { $('#rotate').classList.add('hidden'); try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} if (match) match.destroy(); match = null; KK.currentMatch = null; $('#match').classList.add('hidden'); document.body.style.overflow = ''; }
+  // first-time controls tutorial (paused coach marks)
+  const TUT = [
+    ['#joybase', '🕹️ Move', 'Drag anywhere on the left side to run. The arrow under your feet shows who you control. (Keyboard: arrows / WASD)'],
+    ['#b-b', 'B · Low kick', 'With the ball: a quick pass along the ground. Without it: hold to press the ball carrier. (J / Space)'],
+    ['#b-a', 'A · Hard kick', 'With the ball: shoot, hold longer for more power. Without it: slide tackle, but tackling from behind gives fouls and cards. (K / Enter)'],
+    ['#b-c', 'C · Lofted kick', 'With the ball: a high through-ball or cross over defenders. Without it: switch to the player nearest the ball. (U / I)'],
+    ['#b-sprint', 'Sprint', 'Hold to run faster. Sprinting tires players, so use it in bursts. (L / Shift)'],
+    ['#m-ment', 'Mentality', 'Tap to switch between Defensive, Balanced and Attacking. (M)'],
+    ['#m-pause', 'Pause', 'Pause for subs, tactics and goal replays (R+). In a penalty, aim with the stick and press A. Fouls give free kicks and penalties; offside can be switched off in Settings. Good luck!'],
+  ];
+  function tutorial(i) {
+    const box = $('#tut'); document.querySelectorAll('.tut-hl').forEach(e => e.classList.remove('tut-hl'));
+    if (!match || i >= TUT.length) { box.classList.add('hidden'); KK.settings.tutDone = true; persist(); if (match) { match.paused = false; match.last = performance.now(); } return; }
+    match.paused = true; const [sel, h, p] = TUT[i]; const el = $(sel); if (el) el.classList.add('tut-hl');
+    box.innerHTML = `<div class="tut-card"><small class="pg">CONTROLS ${i + 1}/${TUT.length}</small><h3>${h}</h3><p>${p}</p><div class="row"><button class="btn sm alt" data-tut="skip">Skip</button><button class="btn sm" data-tut="${i + 1}">${i + 1 < TUT.length ? 'Next ▶' : 'Play!'}</button></div></div>`;
+    box.classList.remove('hidden');
+  }
+  $('#tut').addEventListener('click', e => { const b = e.target.closest('[data-tut]'); if (!b) return; tutorial(b.dataset.tut === 'skip' ? 99 : +b.dataset.tut); });
+  $('#m-rplus').addEventListener('click', () => { if (match && match.state === 'play') { match.paused = false; match.last = performance.now(); match.startReplay(null); } });
+  $('#match').addEventListener('pointerdown', e => { if (match && match.state === 'replay' && !e.target.closest('#m-pause,#m-tac,#m-overlay,#tut')) { e.preventDefault(); match.skipReplay(); } }, true);
+  function closeMatch() { $('#rotate').classList.add('hidden'); $('#tut').classList.add('hidden'); $('#m-rplus').classList.add('hidden'); try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} if (match) match.destroy(); match = null; KK.currentMatch = null; $('#match').classList.add('hidden'); document.body.style.overflow = ''; }
 
   // pause / subs
   function pauseMenu() {
@@ -655,6 +714,7 @@
     const ov = $('#m-overlay'); ov.classList.remove('hidden');
     ov.innerHTML = `<div class="modal-card"><h2>Paused</h2><p>${$('#h-name').textContent} ${$('#h-score').textContent} ${$('#a-name').textContent} · ${match.minute()}'</p>
       <button class="btn block" id="p-resume">▶ Resume</button>
+      ${match.hasReplay && match.hasReplay() ? '<button class="btn alt block" id="p-replay" style="margin-top:8px"><b class="rplus">R+</b> Watch last goal</button>' : ''}
       <button class="btn alt block" id="p-subs" style="margin-top:8px">🔁 Substitutions (${3 - match.subsUsed} left)</button>
       <div class="chips" style="justify-content:center;margin-top:10px">${MENT.map((t, i) => `<button class="chip ${match.ment[0] === i ? 'on' : ''}" data-ment="${i}">${t}</button>`).join('')}</div>
       <button class="btn alt block" id="p-mute" style="margin-top:8px">${KK.settings.mute ? '🔇 Sound off' : '🔊 Sound on'}</button>
@@ -672,6 +732,7 @@
   $('#m-overlay').addEventListener('click', e => {
     const t = e.target.closest('button,li'); if (!t || !match) return;
     if (t.id === 'ht-go') { match.paused = false; match.last = performance.now(); $('#m-overlay').classList.add('hidden'); }
+    else if (t.id === 'p-replay') { $('#m-overlay').classList.add('hidden'); match.paused = false; match.last = performance.now(); match.startReplay(null); }
     else if (t.id === 'p-resume') { match.paused = false; match.last = performance.now(); $('#m-overlay').classList.add('hidden'); }
     else if (t.dataset.ment) { setMent(+t.dataset.ment); pauseMenu(); }
     else if (t.id === 'p-mute') { KK.sfx.setMute(!KK.settings.mute); if (!KK.settings.mute) KK.sfx.crowdStart(); persist(); pauseMenu(); }
@@ -680,7 +741,7 @@
     else if (t.id === 'p-back') pauseMenu();
     else if (t.dataset.off !== undefined) subsMenu(+t.dataset.off);
     else if (t.dataset.on) {
-      const slot = +t.dataset.slot2, p = match.bench.find(x => x.id === t.dataset.on), e2 = match.ents.find(x => x.t === 0 && x.i === slot);
+      const slot = +t.dataset.slot2, p = match.bench.find(x => x.id === t.dataset.on), e2 = match.ents.find(x => x.t === 0 && x.i === slot); if (!p || !e2 || !e2.sp) return pauseMenu();
       match.bench = match.bench.filter(x => x !== p).concat([e2.sp]); match.substitute(slot, p); match.subsUsed++; toast(`${surname(p.name)} on for ${surname(e2.sp.name)}`); pauseMenu();
     }
   });
@@ -760,5 +821,5 @@
 
   if (!save) view = 'builder';
   render();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  if ('serviceWorker' in navigator && location.protocol !== 'file:' && !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 })();

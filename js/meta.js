@@ -156,6 +156,7 @@
     const xi = new Set(s.lineup);
     s.players.forEach(p => { p.fit = xi.has(p.id) ? Math.max(35, (p.fit == null ? 100 : p.fit) - (o.played ? 16 : 12)) : Math.min(100, (p.fit == null ? 100 : p.fit) + 14); });
     s.players.filter(p => xi.has(p.id)).forEach(p => { p.fit = Math.min(100, p.fit + 6); }); // a little recovery before the next game
+    (o.knocks || []).forEach(id => { const p = s.players.find(q => q.id === id); if (p) p.fit = Math.max(30, p.fit - 10); }); // light knocks: a bit less fit, never out
     return { res, xp, gold: gold + (levelUp ? 3 * (after.lv - before) : 0) + objDone.length + ach.reduce((a, x) => a + x.g, 0), levelUp, lvCoins, ach, objDone, lv: after };
   };
   // Man of the Match from per-player match stats. ents: [{t, sp, ps:{g,sh,pa,tk,sv}}]

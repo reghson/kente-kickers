@@ -10,6 +10,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 const angLerp = (a, b, k) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return a + d * k; };
+const angDiff = (b, a) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 
 function canvasTex(w, h, draw, opts = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
@@ -279,13 +280,35 @@ export function create(canvas, opts = {}) {
     return { root, hips, chest, headG, L: Lb, R: Rb, blob, num, yaw: 0, phase: Math.random() * 6, kick: 0, kickDur: 0.35, kickShot: false, slide: 0, dive: 0, diveSide: 1, pk: 0, pt: 0, pl: 0, celT: 0, spin: 0 };
   }
   function hashOf(p) { return p.sp && p.sp.id ? [...String(p.sp.id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) : p.i * 7 + p.t * 3; }
+  // kit pattern overlay (shirt torso). Cylinder UV: u=0 front(+z), 0.25 left(+x), 0.5 back; v=0 bottom.
+  const patMats = new Map();
+  function patternMat(tm) {
+    const pat = tm.pattern; if (!pat || pat === 'plain') return null;
+    const key = pat + (tm.c2 || '') + tm.shirt; if (patMats.has(key)) return patMats.get(key);
+    const c2 = tm.c2 || '#ffffff', W2 = 256, H2 = 128;
+    const tex = canvasTex(W2, H2, (g) => {
+      g.clearRect(0, 0, W2, H2); g.fillStyle = c2;
+      if (pat === 'stripes') for (let i = 0; i < 10; i++) g.fillRect(i * W2 / 10, 0, W2 / 20, H2);
+      else if (pat === 'pinstripe') for (let i = 0; i < 28; i++) g.fillRect(i * W2 / 28, 0, 2, H2);
+      else if (pat === 'hoops') for (let i = 0; i < 3; i++) g.fillRect(0, H2 * (0.12 + i * 0.3), W2, H2 * 0.14);
+      else if (pat === 'halves') g.fillRect(0, 0, W2 / 2, H2);
+      else if (pat === 'sash') { for (const o of [-W2, 0, W2]) { g.beginPath(); g.moveTo(o + W2 * 0.16, 0); g.lineTo(o + W2 * 0.3, 0); g.lineTo(o + W2 * -0.06, H2); g.lineTo(o + W2 * -0.2, H2); g.closePath(); g.fill(); } }
+      else if (pat === 'kente') { for (let r = 0; r < 4; r++) for (let i = 0; i < 16; i++) { const x = i * W2 / 16, y = r * H2 / 4; g.fillStyle = (i + r) % 2 ? c2 : '#fdd835'; g.fillRect(x, y + 4, W2 / 16, H2 / 9); g.fillStyle = '#111111'; g.fillRect(x + 5, y + H2 / 9 + 6, W2 / 32, H2 / 12); g.fillStyle = '#2e7d32'; if ((i + r) % 3 === 0) g.fillRect(x, y + H2 / 4 - 6, W2 / 16, 3); } }
+    }, { repeat: [1, 1] });
+    tex.wrapS = THREE.RepeatWrapping; perMatch.push(tex);
+    const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5 }); perMatch.push(mat); patMats.set(key, mat); return mat;
+  }
+  const torsoSkin = keep(new THREE.CylinderGeometry(0.2, 0.15, 0.5, 14, 1, true));
   function makeFig(p, tm) {
     const gk = p.pos === 'GK', r = hashOf(p);
     const skinI = r % SKIN.length, light = skinI >= 4;
     const hairStyle = [0, 0, 1, 2, 3, 4, 5, 6, 0, 1, 3][(r >> 3) % 11];
     const hair = HAIRC[light ? (r >> 5) % HAIRC.length : (r >> 5) % 3];
     const look = { shirt: gk ? (tm.gk || '#7cb342') : tm.shirt, shorts: gk ? '#222831' : (tm.shorts || '#ffffff'), socks: gk ? (tm.gk || '#7cb342') : (tm.socks || tm.shirt), boots: BOOTC[(r >> 7) % BOOTC.length], skin: SKIN[skinI], hair, hairStyle, gloves: gk ? '#f5f5f5' : null, sleeveLong: gk, number: p.i === 0 ? 1 : p.i + 1, size: 0.97 + ((r >> 9) % 7) * 0.01 };
-    const f = buildFigure(look); f.yaw = Math.atan2(p.fx, p.fy); return f;
+    const f = buildFigure(look); f.yaw = Math.atan2(p.fx, p.fy);
+    const pm = gk ? null : patternMat(tm);
+    if (pm) { const o = new THREE.Mesh(torsoSkin, pm); o.position.set(0, 0.27, 0); o.scale.set(1.025, 1.0, 0.6 * 1.04); f.chest.add(o); }
+    return f;
   }
   // static extras (stewards in hi-vis, camera operators) — baked into one mesh each
   function bake(group) {
@@ -454,13 +477,18 @@ export function create(canvas, opts = {}) {
       if (a > 0.06 && !(p === b.lastKicker && p.t === m.goalTeam)) { K.lh = P.lh; K.rh = P.rh; K.lk = P.lk; K.rk = P.rk; K.lift *= 0.5; }
       mixPose(P, K, w);
     } else { f.celT = 0; f.spin *= Math.exp(-dt * 6); }
+    // blend toward the target pose so state changes (idle/run/kick/turn) are smooth
+    const turn = angDiff(tyaw, f.yaw); P.hz += clamp(turn, -0.6, 0.6) * 0.22 * a;
+    if (!f.P) f.P = P; else { const kb = 1 - Math.exp(-dt * (f.kick || f.dive || f.slide ? 30 : 16)); for (const k in P) f.P[k] += (P[k] - f.P[k]) * kb; }
+    const Q = f.P;
     // apply
-    f.root.position.set(p.x - HL, P.lift * PS, p.y - CY);
+    f.root.visible = !p.off; if (f.blob) f.blob.visible = !p.off;
+    f.root.position.set(p.x - HL, Q.lift * PS, p.y - CY);
     f.root.rotation.y = f.yaw + f.spin;
-    const h = f.hips; h.position.set(P.hsx, HIPY + P.hy, 0); h.rotation.set(P.hx, P.hyaw, P.hz);
-    f.chest.rotation.x = P.cx;
-    f.L.hp.rotation.x = P.lh; f.R.hp.rotation.x = P.rh; f.L.kn.rotation.x = P.lk; f.R.kn.rotation.x = P.rk;
-    f.L.sh.rotation.set(P.ls, 0, P.lsz); f.R.sh.rotation.set(P.rs, 0, P.rsz); f.L.el.rotation.x = P.le; f.R.el.rotation.x = P.re;
+    const h = f.hips; h.position.set(Q.hsx, HIPY + Q.hy, 0); h.rotation.set(Q.hx, Q.hyaw, Q.hz);
+    f.chest.rotation.x = Q.cx;
+    f.L.hp.rotation.x = Q.lh; f.R.hp.rotation.x = Q.rh; f.L.kn.rotation.x = Q.lk; f.R.kn.rotation.x = Q.rk;
+    f.L.sh.rotation.set(Q.ls, 0, Q.lsz); f.R.sh.rotation.set(Q.rs, 0, Q.rsz); f.L.el.rotation.x = Q.le; f.R.el.rotation.x = Q.re;
     if (f.blob) { f.blob.position.set(p.x - HL, 0.02, p.y - CY); }
   }
 
@@ -508,7 +536,7 @@ export function create(canvas, opts = {}) {
       for (const f of figs.values()) { scene.remove(f.root); if (f.blob) scene.remove(f.blob); }
       if (refFig) { scene.remove(refFig.root); if (refFig.blob) scene.remove(refFig.blob); refFig = null; }
       extras.forEach((o) => scene.remove(o)); extras = []; setWeather('clear');
-      figs.clear(); perMatch.forEach((o) => o.dispose()); perMatch = []; curMatch = null;
+      figs.clear(); patMats.clear(); perMatch.forEach((o) => o.dispose()); perMatch = []; curMatch = null;
     },
     resize() {
       const r = canvas.getBoundingClientRect(); cssW = Math.max(1, r.width); cssH = Math.max(1, r.height);
