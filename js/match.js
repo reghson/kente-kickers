@@ -14,7 +14,7 @@
 
   class Match {
     constructor(canvas, cfg) {
-      this.cv = canvas; this.g = canvas.getContext('2d'); this.cfg = cfg;
+      this.cv = canvas; this.g = canvas.getContext('2d'); this.cfg = cfg; this.r3 = cfg.r3 || null; this.fps = 0; this.frameDt = 1 / 60;
       this.total = (cfg.lengthMin || 3) * 60; this.elapsed = 0; this.half = 1;
       this.score = [0, 0]; this.scorers = []; this.events = [];
       this.teams = [cfg.my, cfg.opp].map((tm, t) => {
@@ -34,17 +34,19 @@
       this.ctrl = null; this.switchCd = 0; this.cam = { x: L / 2, y: CY };
       this.state = 'pre'; this.stateT = 0; this.paused = false; this.banner = '';
       this.kickoff(cfg.kickoffTeam || 0);
+      if (this.r3) this.r3.begin(this);
       this.resize(); this._onResize = () => this.resize(); window.addEventListener('resize', this._onResize);
       this.last = performance.now(); this.acc = 0; this.running = true;
       this.loop = this.loop.bind(this); requestAnimationFrame(this.loop);
       KK.sfx.crowdStart();
     }
-    destroy() { this.running = false; window.removeEventListener('resize', this._onResize); KK.sfx.crowdStop(); }
+    destroy() { this.running = false; window.removeEventListener('resize', this._onResize); KK.sfx.crowdStop(); if (this.r3) this.r3.end(this); }
     resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2), r = this.cv.getBoundingClientRect();
       this.cv.width = Math.max(1, Math.round(r.width * dpr)); this.cv.height = Math.max(1, Math.round(r.height * dpr));
       this.dpr = dpr; this.vertical = r.height >= r.width;
       this.sc = Math.min(r.width, r.height) / 40 * dpr;
+      if (this.r3) this.r3.resize();
     }
     team(t) { return this.teams[t]; }
     maxSpeed(p) { return (5 + p.sp.stats.pac * 0.045) * SPEED * (p.pos === 'GK' ? 0.85 : 1); }
@@ -171,7 +173,9 @@
     // ---------- loop ----------
     loop(now) {
       if (!this.running) return;
-      let dt = Math.min(0.1, (now - this.last) / 1000); this.last = now;
+      const raw = (now - this.last) / 1000; let dt = Math.min(0.1, raw); this.last = now;
+      if (raw > 0) this.fps = this.fps ? this.fps * 0.95 + 0.05 / raw : 1 / raw;
+      this.frameDt = this.paused ? 0 : dt;
       if (!this.paused) { this.acc += dt; let n = 0; while (this.acc >= DT && n < 6) { this.step(DT); this.acc -= DT; n++; } if (n === 6) this.acc = 0; }
       this.draw(); if (this.cfg.onHud) this.cfg.onHud(this);
       requestAnimationFrame(this.loop);
@@ -439,6 +443,7 @@
     }
     draw() {
       const g = this.g, cv = this.cv, s = this.sc, dpr = this.dpr;
+      if (this.r3) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); this.r3.render(this, this.frameDt); this.drawOverlay3D(); this.drawRadar(); this.drawBanners(); return; }
       g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#1d4d24'; g.fillRect(0, 0, cv.width, cv.height);
       this.worldTransform();
       // stands area
@@ -497,7 +502,21 @@
       g.fillStyle = '#fff'; g.beginPath(); g.arc(bx, by - lift, br * (1 + b.z * 0.08), 0, 7); g.fill(); g.strokeStyle = '#222'; g.lineWidth = 1 * dpr; g.stroke();
       g.fillStyle = '#222'; g.beginPath(); g.arc(bx + Math.cos(b.spin) * br * 0.4, by - lift + Math.sin(b.spin) * br * 0.4, br * 0.35, 0, 7); g.fill();
       this.drawRadar();
-      // banners
+      this.drawBanners();
+    }
+    drawOverlay3D() {
+      const p = this.ctrl; if (!p) return;
+      const g = this.g, dpr = this.dpr, top = this.r3.project(p.x, p.y, 3.2), foot = this.r3.project(p.x, p.y, 0);
+      if (!top || !foot) return;
+      const x = top[0] * dpr, y = top[1] * dpr, fx = foot[0] * dpr, fy = foot[1] * dpr, w = 34 * dpr;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `bold ${Math.round(12 * dpr)}px Arial`; g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 3 * dpr; const nm = p.sp.name.split(' ').pop();
+      g.strokeText(nm, x, y - 8 * dpr); g.fillText(nm, x, y - 8 * dpr);
+      g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(fx - w / 2, fy + 8 * dpr, w, 3 * dpr); g.fillStyle = p.stam > 0.3 ? '#76ff03' : '#ff5252'; g.fillRect(fx - w / 2, fy + 8 * dpr, w * p.stam, 3 * dpr);
+      if (this.input.shootDown && this.ball.owner === p) { const pw = Math.min(this.input.shootT, 0.6) / 0.6; g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(fx - w / 2, fy + 13 * dpr, w, 4 * dpr); g.fillStyle = '#ff9800'; g.fillRect(fx - w / 2, fy + 13 * dpr, w * pw, 4 * dpr); }
+    }
+    drawBanners() {
+      const g = this.g, cv = this.cv, dpr = this.dpr;
       if (this.banner || (this.flashT > 0 && this.flashTxt)) {
         const txt = this.banner || this.flashTxt, big = !!this.banner;
         g.font = `900 ${Math.round((big ? 44 : 22) * dpr)}px Arial Black, Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';

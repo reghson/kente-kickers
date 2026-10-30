@@ -59,16 +59,16 @@ KK.statsFor = function (pos, rating, r = Math.random) {
   return { pac: v(4), sho: v(7), pas: v(-3), def: v(-20) };
 };
 
-KK.genPlayer = function (pos, rating, r = Math.random) {
+KK.genPlayer = function (pos, rating, r = Math.random, style) {
   rating = KK.clamp(Math.round(rating), 30, 99);
-  return { id: KK.uid() + Math.floor(r() * 1e6).toString(36), name: KK.genName(r), pos, rating, age: 17 + Math.floor(r() * 17), stats: KK.statsFor(pos, rating, r), goals: 0, apps: 0 };
+  return { id: KK.uid() + Math.floor(r() * 1e6).toString(36), name: KK.natName ? KK.natName(r, style) : KK.genName(r), pos, rating, age: 17 + Math.floor(r() * 17), stats: KK.statsFor(pos, rating, r), goals: 0, apps: 0 };
 };
 
-KK.genSquad = function (base = 50) {
+KK.genSquad = function (base = 50, style) {
   const plan = ['GK','GK','DF','DF','DF','DF','DF','DF','MF','MF','MF','MF','MF','FW','FW','FW'];
   const seen = new Set();
   return plan.map((p, i) => {
-    let pl; for (let k = 0; k < 20; k++) { pl = KK.genPlayer(p, base + KK.ri(-5, 6) + (i < 11 ? 2 : -2)); const sn = pl.name.split(' ').pop(); if (!seen.has(sn)) { seen.add(sn); break; } }
+    let pl; for (let k = 0; k < 20; k++) { pl = KK.genPlayer(p, base + KK.ri(-5, 6) + (i < 11 ? 2 : -2), Math.random, style); const sn = pl.name.split(' ').pop(); if (!seen.has(sn)) { seen.add(sn); break; } }
     return pl;
   });
 };
@@ -108,11 +108,22 @@ KK.makeFixtures = function (ids) {
   return rounds.concat(second).map(rd => rd.map(f => ({ ...f, hs: null, as: null })));
 };
 
+// career helpers: mode 'gh' (Ghana Road to Glory, divisions 6..1) or 'eu' (a European country, tiers 1..n)
+KK.career = save => save.career || { mode: 'gh' };
+KK.numTiers = save => KK.career(save).mode === 'eu' ? KK.country(save.career.country).tiers : 6;
+KK.leagueBase = (save, div) => KK.career(save).mode === 'eu' ? KK.tierBase(KK.country(save.career.country), div) : KK.DIV_RATING[div];
+KK.leagueName = (save, div) => { div = div || save.season.div; return KK.career(save).mode === 'eu' ? KK.tierName(KK.country(save.career.country), div) : 'Division ' + div; };
+KK.careerStyle = save => KK.career(save).mode === 'eu' ? KK.country(save.career.country).style : 'gh';
+KK.levelOf = (save, div) => KK.clamp((KK.leagueBase(save, div) - 48) / 7, 0, 6); // 0 (Ghana Div 6) .. ~5
 KK.newSeason = function (save, div, year) {
   const used = new Set([save.team.name]);
-  const base = KK.DIV_RATING[div];
+  const base = KK.leagueBase(save, div);
   const teams = [{ id: 'ME', name: save.team.name, short: save.team.short, c1: save.team.crest.c1, c2: save.team.crest.c2 }];
-  for (let i = 0; i < 7; i++) {
+  if (KK.career(save).mode === 'eu') {
+    const clubs = KK.leagueClubs(save.career.country, div).filter(t => t.name !== save.team.name);
+    const drop = Math.floor(Math.random() * clubs.length);
+    clubs.filter((t, i) => i !== drop).slice(0, 7).forEach(t => { const c = { ...t }; if (c.short === save.team.short) c.short = KK.shortName(c.name + ' X', teams); teams.push(c); });
+  } else for (let i = 0; i < 7; i++) {
     const name = KK.genTeamName(used);
     const c1 = KK.pick(COLORS); let c2 = KK.pick(COLORS); if (c2 === c1) c2 = c1 === '#ffffff' ? '#111111' : '#ffffff';
     teams.push({ id: 'T' + i + KK.uid(), name, short: KK.shortName(name, teams), c1, c2, rating: base + KK.ri(-5, 6), form: KK.pick(Object.keys(KK.FORMATIONS)) });
@@ -120,12 +131,13 @@ KK.newSeason = function (save, div, year) {
   const order = teams.map(t => t.id).sort(() => Math.random() - 0.5);
   save.season = { div, year, teams, fixtures: KK.makeFixtures(order), round: 0, done: false };
   save.market = KK.genMarket(save);
+  if (KK.makeCups) KK.makeCups(save, year);
 };
 
 KK.genMarket = function (save) {
-  const base = KK.DIV_RATING[save.season ? save.season.div : 6];
+  const base = save.season ? KK.leagueBase(save, save.season.div) : 48, style = KK.careerStyle(save);
   const pos = ['GK','DF','DF','DF','MF','MF','MF','FW','FW','FW'];
-  return pos.map(p => { const pl = KK.genPlayer(p, base + KK.ri(-4, 12)); pl.price = Math.round(KK.playerValue(pl) * (1.1 + Math.random() * 0.3) / 10) * 10; return pl; });
+  return pos.map(p => { const pl = KK.genPlayer(p, base + KK.ri(-4, 12), Math.random, Math.random() < 0.7 ? style : 'gh'); pl.price = Math.round(KK.playerValue(pl) * (1.1 + Math.random() * 0.3) / 10) * 10; return pl; });
 };
 
 KK.teamById = (save, id) => save.season.teams.find(t => t.id === id);
@@ -174,7 +186,7 @@ KK.recordResult = function (save, myGoals, oppGoals, scorers) {
   KK.lineupPlayers(save).forEach(p => p.apps = (p.apps || 0) + 1);
   (scorers || []).forEach(id => { const p = save.players.find(x => x.id === id); if (p) p.goals = (p.goals || 0) + 1; });
   const res = myGoals > oppGoals ? 'W' : myGoals < oppGoals ? 'L' : 'D';
-  const mult = 1 + save.stadium * 0.15 + (6 - s.div) * 0.12;
+  const mult = 1 + save.stadium * 0.15 + KK.levelOf(save, s.div) * 0.12;
   const base = res === 'W' ? 300 : res === 'D' ? 150 : 80;
   const gate = home ? Math.round(KK.STADIUM[save.stadium].cap / 40) : 0;
   const coins = Math.round((base + myGoals * 40) * mult + gate);
@@ -183,36 +195,47 @@ KK.recordResult = function (save, myGoals, oppGoals, scorers) {
   s.round++;
   if (s.round % 4 === 0) save.market = KK.genMarket(save);
   let end = null;
+  const cupMsgs = KK.cupAutoAdvance ? KK.cupAutoAdvance(save) : [];
   if (s.round >= s.fixtures.length) end = KK.endSeason(save);
   KK.save(save);
-  return { res, coins, end };
+  return { res, coins, end, cupMsgs };
 };
 
 KK.endSeason = function (save) {
-  const s = save.season, t = KK.table(save), pos = t.findIndex(r => r.id === 'ME') + 1;
+  const s = save.season, t = KK.table(save), pos = t.findIndex(r => r.id === 'ME') + 1, nT = KK.numTiers(save);
+  // finish any cup games still to play this season
+  if (KK.cupAutoAdvance) KK.cupAutoAdvance(save, true);
   let newDiv = s.div, outcome = 'stay';
   if (pos <= 2 && s.div > 1) { newDiv = s.div - 1; outcome = 'up'; }
-  else if (pos >= 7 && s.div < 6) { newDiv = s.div + 1; outcome = 'down'; }
+  else if (pos >= 7 && s.div < nT) { newDiv = s.div + 1; outcome = 'down'; }
   else if (pos === 1 && s.div === 1) outcome = 'champ';
-  const prize = Math.round((9 - pos) * 250 * (1 + (6 - s.div) * 0.4)) + (pos === 1 ? 1500 : 0);
+  const prize = Math.round((9 - pos) * 250 * (1 + KK.levelOf(save, s.div) * 0.4)) + (pos === 1 ? 1500 : 0);
   save.coins += prize;
   save.trophies = save.trophies || [];
-  if (pos === 1) save.trophies.push({ y: s.year, d: s.div });
+  if (pos === 1) save.trophies.push({ y: s.year, d: s.div, name: KK.leagueName(save, s.div) + ' champions' });
+  const qual = KK.cupQualify ? KK.cupQualify(save, pos) : null; save.cupQual = qual;
   // age players a little
   save.players.forEach(p => { p.age++; });
-  const info = { pos, outcome, prize, oldDiv: s.div, newDiv, year: s.year };
+  const info = { pos, outcome, prize, oldDiv: s.div, newDiv, year: s.year, oldName: KK.leagueName(save, s.div), newName: KK.leagueName(save, newDiv), qual: qual ? KK.CUPS[qual].name : null };
   KK.newSeason(save, newDiv, s.year + 1);
   return info;
 };
 
 KK.SAVE_KEY = 'kenteKickers.save.v1';
 KK.save = s => { try { localStorage.setItem(KK.SAVE_KEY, JSON.stringify(s)); } catch (e) {} };
-KK.load = () => { try { const s = JSON.parse(localStorage.getItem(KK.SAVE_KEY)); return s && s.v === 1 ? s : null; } catch (e) { return null; } };
+KK.load = () => { try { const s = JSON.parse(localStorage.getItem(KK.SAVE_KEY)); return s && s.v === 1 ? KK.migrate(s) : null; } catch (e) { return null; } };
+// upgrade older saves in place (v1 saves from before leagues and cups)
+KK.migrate = function (s) {
+  if (!s.career) s.career = { mode: 'gh' };
+  s.settings = s.settings || {}; if (s.settings.len == null) s.settings.len = 3;
+  if (!s.cups && s.season && KK.makeCups) { KK.makeCups(s, s.season.year); KK.cupAutoAdvance(s); }
+  return s;
+};
 
-KK.newCareer = function (team, players) {
-  const save = { v: 1, team, coins: 1000, stadium: 0, players, formation: '4-4-2', settings: KK.settings || { mute: false, len: 3 }, history: [], trophies: [] };
+KK.newCareer = function (team, players, career) {
+  const save = { v: 1, team, coins: 1000, stadium: 0, players, formation: '4-4-2', settings: KK.settings || { mute: false, len: 3 }, history: [], trophies: [], career: career || { mode: 'gh' } };
   KK.autoPick(save);
-  KK.newSeason(save, 6, 1);
+  KK.newSeason(save, save.career.mode === 'eu' ? (save.career.tier || KK.country(save.career.country).tiers) : 6, 1);
   KK.save(save);
   return save;
 };
@@ -263,5 +286,5 @@ KK.colorDist = function (a, b) {
 KK.oppSquad = function (team) {
   const r = KK.seeded(team.id + team.name);
   const slots = KK.FORMATIONS[team.form || '4-4-2'];
-  return slots.map(([pos]) => KK.genPlayer(pos, team.rating + (r() * 8 - 4), r));
+  return slots.map(([pos]) => KK.genPlayer(pos, team.rating + (r() * 8 - 4), r, team.style || 'gh'));
 };
