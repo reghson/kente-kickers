@@ -6,6 +6,7 @@
   const SPEED = 1.25, DT = 1 / 60;
   const clamp = KK.clamp, hyp = Math.hypot;
   const norm = (x, y) => { const d = hyp(x, y) || 1; return [x / d, y / d]; };
+  const pick = a => a[Math.floor(Math.random() * a.length)];
   function segDist(px, py, ax, ay, bx, by) {
     const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy || 1;
     const t = clamp(((px - ax) * vx + (py - ay) * vy) / l2, 0, 1);
@@ -17,6 +18,7 @@
       this.cv = canvas; this.g = canvas.getContext('2d'); this.cfg = cfg; this.r3 = cfg.r3 || null; this.fps = 0; this.frameDt = 1 / 60;
       this.total = (cfg.lengthMin || 3) * 60; this.elapsed = 0; this.half = 1;
       this.score = [0, 0]; this.scorers = []; this.events = [];
+      this.st = { poss: [0, 0], shots: [0, 0], sot: [0, 0], passes: [0, 0], tackles: [0, 0], saves: [0, 0], fouls: [0, 0] }; this.chain = 0; this.sayT = 0;
       this.teams = [cfg.my, cfg.opp].map((tm, t) => {
         const q = clamp((tm.rating - 40) / 50, 0, 1);
         return { ...tm, t, q, dir: t === 0 ? 1 : -1, goalX: t === 0 ? 0 : L };
@@ -26,11 +28,12 @@
         const slots = KK.FORMATIONS[tm.formation] || KK.FORMATIONS['4-4-2'];
         tm.players.forEach((sp, i) => {
           const s = slots[i];
-          this.ents.push({ t, i, slot: s, pos: s[0], sp, x: 0, y: 0, vx: 0, vy: 0, fx: t === 0 ? 1 : -1, fy: 0, tackleCd: 0, kickCd: 0, stun: 0, dec: Math.random() * 0.4, stam: 1, lunge: 0, tgt: null });
+          this.ents.push({ t, i, slot: s, pos: s[0], sp, x: 0, y: 0, vx: 0, vy: 0, fx: t === 0 ? 1 : -1, fy: 0, tackleCd: 0, kickCd: 0, stun: 0, dec: Math.random() * 0.4, stam: Math.max(0.55, Math.min(1, (sp.fit == null ? 100 : sp.fit) / 100)), lunge: 0, tgt: null, ps: { g: 0, as: 0, sh: 0, pa: 0, tk: 0, sv: 0 } });
         });
       });
       this.ball = { x: L / 2, y: CY, vx: 0, vy: 0, owner: null, last: 0, protect: 0, tried: new Set(), passTo: null, shot: false, z: 0, vz: 0, spin: 0 };
-      this.input = { jx: 0, jy: 0, sprint: false, shootDown: false, shootT: 0, keys: new Set() };
+      this.input = { jx: 0, jy: 0, sprint: false, sprintBtn: false, edge: false, press: false, shootDown: false, shootT: 0, keys: new Set() };
+      this.ment = [1, 1]; this.mentT = 0; this.btnMode = {};
       this.ctrl = null; this.switchCd = 0; this.cam = { x: L / 2, y: CY };
       this.state = 'pre'; this.stateT = 0; this.paused = false; this.banner = '';
       this.kickoff(cfg.kickoffTeam || 0);
@@ -54,7 +57,7 @@
       const tm = this.teams[p.t], b = this.ball, slot = p.slot;
       if (p.pos === 'GK') return null;
       const has = b.owner && b.owner.t === p.t, opp = b.owner && b.owner.t !== p.t;
-      let depth = slot[1] + (has ? 0.1 : opp ? -0.04 : 0.03);
+      let depth = slot[1] + (has ? 0.1 : opp ? -0.04 : 0.03) + (this.ment[p.t] - 1) * (has ? 0.08 : 0.06);
       let x = tm.goalX + tm.dir * depth * L + (b.x - L / 2) * 0.45;
       const minX = tm.goalX + tm.dir * 4, maxX = tm.goalX + tm.dir * (L * 0.92);
       x = tm.dir > 0 ? clamp(x, minX, maxX) : clamp(x, maxX, minX);
@@ -112,20 +115,66 @@
       let ty = CY + (m > 0.25 ? clamp(wy * 4, -3.3, 3.3) : (Math.random() < 0.5 ? -2.6 : 2.6));
       this.shoot(p, ty, power);
     }
-    pressTackle(down) {
-      this.input.sprint = down;
-      if (!down || this.state !== 'play') return;
-      const p = this.ctrl, b = this.ball;
-      if (b.owner && b.owner.t === 1) {
-        const o = b.owner, d = hyp(o.x - p.x, o.y - p.y);
-        p.lunge = 0.25;
-        if (d < 2.4 && p.tackleCd <= 0) {
-          p.tackleCd = 0.6;
-          const prob = 0.58 + (p.sp.stats.def - (o.sp.stats.pac + o.sp.stats.pas) / 2) / 150;
-          if (Math.random() < prob) { b.owner = p; b.last = 0; b.protect = 0.5; o.stun = 0.5; KK.sfx.tackle(); this.flash('TACKLE!'); }
-          else { p.stun = 0.4; }
-        }
+    pressTackle(down) { this.input.sprintBtn = down; if (down) this.slide(); } // legacy
+    sprinting() { const i = this.input; return !!(i.sprint || i.sprintBtn || i.edge || i.keys.has('ShiftLeft') || i.keys.has('ShiftRight') || i.keys.has('KeyL')); }
+    // contextual buttons: attack = user's team has (or is receiving) the ball
+    mode() {
+      const b = this.ball;
+      if (b.owner) return b.owner.t === 0 ? 'att' : 'def';
+      if (b.passTo) return b.passTo.t === 0 ? 'att' : 'def';
+      return this.state === 'kickoff' ? 'def' : (b.last === 0 && hyp(b.x - this.ctrl.x, b.y - this.ctrl.y) < 4 ? 'att' : 'def');
+    }
+    labels() { return this.mode() === 'att' ? { A: 'HARD KICK', B: 'LOW KICK', C: 'LOFTED KICK' } : { A: 'SLIDE TACKLE', B: 'PRESSURE', C: 'SWITCH PLAYER' }; }
+    btn(k, down) {
+      if (down) this.btnMode[k] = (this.state === 'kickoff' && this.ball.owner && this.ball.owner.t === 0) ? 'att' : this.mode();
+      const md = this.btnMode[k] || this.mode(); this.lastBtn = k + ':' + md;
+      if (k === 'A') { if (md === 'att') this.pressShoot(down); else if (down) this.slide(); }
+      else if (k === 'B') { if (md === 'att') { if (down) this.pressPass(); } else this.input.press = down; }
+      else if (k === 'C') { if (!down) return; if (md === 'att') this.pressLob(); else this.switchPlayer(); }
+      if (!down) delete this.btnMode[k];
+    }
+    switchPlayer() {
+      if (this.state !== 'play') return; const b = this.ball, p = this.ctrl;
+      if (b.owner && b.owner.t === 0) return;
+      const n = this.nearestTo(0, b.x + b.vx * 0.2, b.y + b.vy * 0.2, true, p); if (n) { this.ctrl = n; this.switchCd = 0.9; this.switches = (this.switches || 0) + 1; }
+    }
+    slide() {
+      if (this.state !== 'play') return;
+      const p = this.ctrl, b = this.ball; if (p.tackleCd > 0 || p.stun > 0) return;
+      const o = b.owner && b.owner.t === 1 ? b.owner : null, tx = o ? o.x : b.x, ty = o ? o.y : b.y;
+      const [dx, dy] = norm(tx - p.x, ty - p.y), d = hyp(tx - p.x, ty - p.y);
+      p.lunge = 0.35; p.tackleCd = 0.75; p.slideT = 0.45; p.vx = dx * 9; p.vy = dy * 9; p.fx = dx; p.fy = dy; this.slides = (this.slides || 0) + 1;
+      if (o && d < 3.0) {
+        const prob = 0.6 + (p.sp.stats.def - (o.sp.stats.pac + o.sp.stats.pas) / 2) / 150 - (d > 2.2 ? 0.15 : 0);
+        if (Math.random() < prob && b.protect <= 0.2) { b.owner = null; b.vx = dx * 7 + (Math.random() - 0.5) * 3; b.vy = dy * 7 + (Math.random() - 0.5) * 3; b.last = 0; b.passTo = null; b.tried = new Set([o]); o.stun = 0.6; KK.sfx.tackle(); this.flash('SLIDE TACKLE!'); this.st.tackles[0]++; p.ps.tk++; this.say(`Superb slide tackle by ${p.sp.name.split(' ').pop()}!`); }
+        else { p.stun = 0.5; }
+      } else if (!o && !b.owner && d < 2.6 && b.z < 1) { this.take(p); this.flash('SLIDE TACKLE!'); }
+      else p.stun = 0.25;
+    }
+    pressLob() {
+      if (this.state !== 'play' && this.state !== 'kickoff') return;
+      const p = this.ctrl, b = this.ball; if (b.owner !== p) return;
+      if (this.state === 'kickoff') this.startPlay();
+      let [dx, dy, m] = this.inputVec(); if (m < 0.3) { dx = p.fx; dy = p.fy; }
+      const gx = L, wide = Math.abs(p.y - CY) > 11 && p.x > 68;
+      let r = null, tx, ty;
+      if (wide) { // cross into the box
+        let bs = -1e9; for (const e of this.ents) { if (e.t !== 0 || e === p || e.pos === 'GK') continue; if (e.x < 80) continue; const s = -Math.abs(e.y - CY) * 0.3 + this.openness(p, e) + (e.x - 80) * 0.1; if (s > bs) { bs = s; r = e; } }
+        tx = r ? r.x + 1 : gx - 9; ty = r ? r.y : CY + (p.y < CY ? 3 : -3);
+      } else {
+        let bs = -1e9;
+        for (const e of this.ents) { if (e.t !== 0 || e === p || e.pos === 'GK') continue; const vx = e.x - p.x, vy = e.y - p.y, d = hyp(vx, vy); if (d < 10 || d > 62) continue; const cos = (vx * dx + vy * dy) / d; if (cos < 0.4) continue; const s = cos * 3 + this.openness(p, e) * 0.5 + d * 0.03; if (s > bs) { bs = s; r = e; } }
+        if (r) { tx = r.x + r.vx * 1.2; ty = r.y + r.vy * 1.2; } else { tx = p.x + dx * 30; ty = p.y + dy * 30; }
       }
+      this.lob(p, clamp(tx, 1, L - 1), clamp(ty, 1, W - 1), r);
+      if (r) { this.ctrl = r; this.switchCd = 0.8; }
+      this.lobs = (this.lobs || 0) + 1;
+    }
+    lob(p, tx, ty, recv) {
+      const d = hyp(tx - p.x, ty - p.y), vz = clamp(4.5 + d * 0.17, 6, 12.5), T = 2 * vz / 14;
+      const sp = d / T * 1.04;
+      this.kickTo(p, tx, ty, sp, this.passNoise(p) * 0.6, recv);
+      const b = this.ball; b.vz = vz; b.z = 0.05; b.lob = true;
     }
     // ---------- actions ----------
     passNoise(p) { const tm = this.teams[p.t]; return (1 - p.sp.stats.pas / 110) * 0.16 * (p.t === 0 ? 0.8 : 1.35 - 0.6 * tm.q); }
@@ -158,7 +207,7 @@
       [dx, dy] = [dx * c - dy * s, dx * s + dy * c];
       b.owner = null; b.vx = dx * speed; b.vy = dy * speed; b.x = p.x + dx * 1.0; b.y = p.y + dy * 1.0;
       b.last = p.t; b.lastKicker = p; b.tried = new Set([p]); b.passTo = recv; b.shot = !!shot; b.shotT = p.t;
-      b.vz = shot ? 2 + Math.random() * 3 : (speed > 22 ? 3 : 0); b.z = 0.01;
+      b.vz = shot ? 2 + Math.random() * 3 : (speed > 22 ? 3 : 0); b.z = 0.01; b.lob = false;
       p.kickCd = 0.35;
       if (shot) KK.sfx.kick(1); else KK.sfx.pass();
     }
@@ -167,8 +216,12 @@
       const d = hyp(gx - p.x, CY - p.y);
       const noise = ((1 - p.sp.stats.sho / 110) * 0.13 + d / 40 * 0.05) * (p.t === 0 ? 0.9 : 1.3 - 0.5 * tm.q) * (0.8 + power * 0.25);
       this.kickTo(p, gx, ty, (21 + p.sp.stats.sho * 0.12) * power, noise, null, true);
+      this.st.shots[p.t]++; p.ps.sh++; this.chain = 0;
+      const sn = p.sp.name.split(' ').pop();
+      this.say(d > 22 ? pick([`${sn} tries his luck from distance!`, `Long-range effort from ${sn}!`]) : pick([`${sn} shoots!`, `${sn} lets fly!`, `Chance for ${sn}!`]));
     }
-    startPlay() { if (this.state === 'kickoff') { this.state = 'play'; this.banner = ''; KK.sfx.whistle(1); } }
+    say(txt, force) { if (!force && this.sayT > 0) return; this.sayT = force ? 3.2 : 2.6; this.lastSay = txt; if (this.cfg.onSay) this.cfg.onSay(txt); }
+    startPlay() { if (this.state === 'kickoff') { this.state = 'play'; this.banner = ''; KK.sfx.whistle(1); if (this.elapsed < 1) this.say(pick(['And we are under way!', 'The referee gets us started!']), true); else if (this.half === 2 && Math.abs(this.elapsed - this.total / 2) < 0.5) this.say('The second half is under way!', true); } }
     flash(txt) { this.flashTxt = txt; this.flashT = 0.9; }
     // ---------- loop ----------
     loop(now) {
@@ -184,6 +237,8 @@
       const b = this.ball;
       if (this.input.shootDown) this.input.shootT += dt;
       if (this.flashT > 0) this.flashT -= dt;
+      if (this.sayT > 0) this.sayT -= dt;
+      if (this.state === 'play') { const o = this.ball.owner; if (o) this.st.poss[o.t] += dt; else if (this.ball.passTo) this.st.poss[this.ball.passTo.t] += dt; }
       if (this.state === 'kickoff') { this.stateT -= dt; if (this.stateT <= 0) this.startPlay(); this.camFollow(dt); return; }
       if (this.state === 'goal' || this.state === 'half' || this.state === 'restart') {
         this.stateT -= dt; this.ents.forEach(p => { p.vx *= 0.9; p.vy *= 0.9; p.x += p.vx * dt; p.y += p.vy * dt; });
@@ -194,9 +249,10 @@
       if (this.state === 'end') { this.stateT -= dt; if (this.stateT <= 0 && !this.ended) { this.ended = true; this.cfg.onEnd && this.cfg.onEnd(this.result()); } return; }
       // clock
       this.elapsed += dt;
-      if (this.half === 1 && this.elapsed >= this.total / 2) { this.half = 2; this.elapsed = this.total / 2; KK.sfx.whistle(2); this.state = 'half'; this.banner = 'HALF TIME'; this.stateT = 2; this.after = () => this.kickoff(1); return; }
-      if (this.elapsed >= this.total) { this.elapsed = this.total; this.state = 'end'; this.stateT = 2.4; this.banner = 'FULL TIME'; KK.sfx.whistle(3); return; }
+      if (this.half === 1 && this.elapsed >= this.total / 2) { this.half = 2; this.elapsed = this.total / 2; KK.sfx.whistle(2); this.state = 'half'; this.banner = 'HALF TIME'; this.stateT = 2; this.say(`Half time: ${this.score[0]} - ${this.score[1]}.`, true); if (this.cfg.onHalf) this.cfg.onHalf(this); this.after = () => this.kickoff(1); return; }
+      if (this.elapsed >= this.total) { this.elapsed = this.total; this.state = 'end'; this.stateT = 2.4; this.banner = 'FULL TIME'; this.say('The referee blows for full time!', true); KK.sfx.whistle(3); return; }
       b.protect -= dt;
+      this.mentT -= dt; if (this.mentT <= 0) { this.mentT = 4; const df = this.score[1] - this.score[0], late = this.elapsed / this.total > 0.55; this.ment[1] = df < 0 && late ? 2 : df > 0 && late ? 0 : 1; }
       // control switching
       this.switchCd -= dt;
       if (b.owner && b.owner.t === 0) this.ctrl = b.owner;
@@ -209,7 +265,7 @@
       for (let t = 0; t < 2; t++) {
         if (b.owner && b.owner.t === t) continue;
         const list = this.ents.filter(p => p.t === t && p.pos !== 'GK' && p !== this.ctrl).sort((a, c) => hyp(a.x - b.x, a.y - b.y) - hyp(c.x - b.x, c.y - b.y));
-        const nCh = t === 0 ? 1 : (b.owner ? 2 : 1);
+        const nCh = t === 0 ? (this.ment[0] === 2 && b.owner ? 2 : 1) : (b.owner ? (this.ment[1] === 0 ? 1 : 2) : 1);
         list.slice(0, nCh).forEach(p => this.chasers[t].add(p));
       }
       for (const p of this.ents) this.think(p, dt);
@@ -233,7 +289,7 @@
     }
     think(p, dt) {
       const b = this.ball, tm = this.teams[p.t];
-      p.tackleCd -= dt; p.kickCd -= dt; p.lunge -= dt;
+      p.tackleCd -= dt; p.kickCd -= dt; p.lunge -= dt; if (p.slideT > 0) p.slideT -= dt;
       if (p.stun > 0) { p.stun -= dt; this.steer(p, p.vx * 0.5, p.vy * 0.5, dt); return; }
       if (p === this.ctrl) return this.userMove(p, dt);
       if (p.pos === 'GK') return this.gkThink(p, dt);
@@ -265,7 +321,7 @@
       if (Math.random() < prob) {
         b.owner = null; const [dx, dy] = norm(p.x - o.x + (Math.random() - 0.5), p.y - o.y + (Math.random() - 0.5));
         b.vx = -dx * 3 + p.vx * 0.3; b.vy = -dy * 3 + p.vy * 0.3; b.last = p.t; b.tried = new Set([o]); b.passTo = null; b.shot = false;
-        o.stun = 0.45; KK.sfx.tackle();
+        o.stun = 0.45; KK.sfx.tackle(); this.st.tackles[p.t]++; p.ps.tk++; if (Math.random() < 0.4) this.say(`Strong challenge from ${p.sp.name.split(' ').pop()}.`);
       } else p.stun = 0.35;
     }
     userMove(p, dt) {
@@ -274,7 +330,15 @@
         const [ux, uy] = norm(b.vx, b.vy), s = Math.max(0, (p.x - b.x) * ux + (p.y - b.y) * uy);
         return this.moveToward(p, b.x + ux * s, b.y + uy * s, 1, dt);
       }
-      const sprint = this.input.sprint && p.stam > 0.05;
+      if (p.slideT > 0) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94; return; }
+      const sprint = this.sprinting() && p.stam > 0.05;
+      if (this.input.press && (b.owner ? b.owner.t === 1 : b.passTo ? b.passTo.t === 1 : true)) { // PRESSURE: auto close-down
+        const o = b.owner, tx = o ? o.x + o.vx * 0.3 : b.x + b.vx * 0.3, ty = o ? o.y + o.vy * 0.3 : b.y + b.vy * 0.3;
+        this.pressT = (this.pressT || 0) + dt; p.stam = Math.max(0, p.stam - dt * 0.1);
+        this.moveToward(p, tx, ty, sprint ? 1.15 : 1.0, dt);
+        if (o && hyp(o.x - p.x, o.y - p.y) < 1.6) this.aiTackle(p);
+        return;
+      }
       if (sprint && m > 0.15) p.stam = Math.max(0, p.stam - dt * 0.28); else p.stam = Math.min(1, p.stam + dt * 0.12);
       let sp = this.maxSpeed(p) * Math.min(1, m) * (sprint ? 1.3 : 0.92) * (b.owner === p ? 0.9 : 1) * (p.lunge > 0 ? 1.4 : 1);
       if (m < 0.15) { this.steer(p, 0, 0, dt); return; }
@@ -317,13 +381,18 @@
         if (dg < range && Math.abs(p.y - CY) < dg * 0.85 && Math.random() < 0.35 + tm.q * 0.35 + (dg < 12 ? 0.3 : 0)) {
           return this.shoot(p, CY + (Math.random() < 0.5 ? -1 : 1) * (1.2 + Math.random() * 2.3), 0.9 + Math.random() * 0.12);
         }
+        if (Math.abs(p.y - CY) > 14 && (gx - p.x) * dir < 26 && Math.random() < 0.35) {
+          const box = this.ents.filter(e => e.t === p.t && e !== p && e.pos !== 'GK' && Math.abs(gx - e.x) < 18 && Math.abs(e.y - CY) < 12);
+          if (box.length) { const r = box[Math.floor(Math.random() * box.length)]; return this.lob(p, r.x, r.y, r); }
+        }
+        const fwd = this.ment[p.t] === 2 ? 0.75 : this.ment[p.t] === 0 ? 0.3 : 0.5;
         const wantPass = (np < 3.4 && Math.random() < 0.6) || Math.random() < 0.1;
         if (wantPass) {
           let best = null, bs = -1e9;
           for (const m of this.ents) {
             if (m.t !== p.t || m === p || m.pos === 'GK') continue;
             const d = hyp(m.x - p.x, m.y - p.y); if (d < 5 || d > 35) continue;
-            const s = (m.x - p.x) * dir * 0.5 + this.openness(p, m) * 2.2 - d * 0.08 + Math.random() * 2.5;
+            const s = (m.x - p.x) * dir * fwd + this.openness(p, m) * 2.2 - d * 0.08 + Math.random() * 2.5;
             if (s > bs) { bs = s; best = m; }
           }
           if (best && (bs > 4 || np < 2.5)) return this.passTo(p, best);
@@ -350,7 +419,7 @@
         return;
       }
       const sp = hyp(b.vx, b.vy);
-      if (sp > 0) { const ns = Math.max(0, sp - (sp * 0.55 + 1.6) * dt); b.vx *= ns / sp; b.vy *= ns / sp; }
+      if (sp > 0) { const air = b.z > 0.3; const ns = Math.max(0, sp - (air ? sp * 0.05 : sp * 0.55 + 1.6) * dt); b.vx *= ns / sp; b.vy *= ns / sp; }
       b.x += b.vx * dt; b.y += b.vy * dt; b.spin += sp * dt;
       if (b.z > 0 || b.vz > 0) { b.vz -= 14 * dt; b.z += b.vz * dt; if (b.z < 0) { b.z = 0; b.vz = Math.abs(b.vz) > 2 ? -b.vz * 0.35 : 0; } }
       if (dead) return;
@@ -368,6 +437,12 @@
       for (const p of this.ents) {
         if (p.stun > 0 || p.kickCd > 0 || b.tried.has(p)) continue;
         const isGK = p.pos === 'GK', d = hyp(p.x - b.x, p.y - b.y), reach = isGK ? 1.9 : 1.1;
+        if (!isGK && b.lob && d < 1.2 && b.z > 1.4 && b.z < 2.5 && b.vz < 0 && p.t === b.last) { // header
+          const tm = this.teams[p.t], gx = tm.goalX === 0 ? L : 0, dg = hyp(gx - p.x, CY - p.y);
+          b.tried.add(p); if (dg < 17 && Math.random() < 0.8) { this.shoot(p, CY + (Math.random() - 0.5) * 5, 0.8); this.ball.vz = 1 + Math.random() * 2; this.ball.z = b.z; this.flash('HEADER!'); }
+          else { b.vx = (gx - p.x) / (dg || 1) * 8; b.vy = (CY - p.y) / (dg || 1) * 8; b.vz = 2; b.lob = false; b.lastKicker = p; }
+          break;
+        }
         if (d > reach || b.z > (isGK ? 2.6 : 1.4)) continue;
         if (sp < 12 && !isGK) { this.take(p); break; }
         b.tried.add(p);
@@ -376,14 +451,20 @@
         if (sp < 12) chance = 1;
         if (Math.random() < chance) {
           if (isGK && sp > 20 && Math.random() < 0.4) { // parry
-            b.vx = -b.vx * 0.35 + (Math.random() - 0.5) * 4; b.vy = b.vy * 0.4 + (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 5); b.last = p.t; b.shot = false; KK.sfx.tackle(); this.flash('SAVE!'); break;
+            b.vx = -b.vx * 0.35 + (Math.random() - 0.5) * 4; b.vy = b.vy * 0.4 + (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 5); if (b.shot && b.shotT !== p.t) this.saved(p); b.last = p.t; b.shot = false; KK.sfx.tackle(); this.flash('SAVE!'); break;
           }
-          if (isGK && b.shot && b.shotT !== p.t) this.flash('SAVE!');
+          if (isGK && b.shot && b.shotT !== p.t) { this.flash('SAVE!'); this.saved(p); }
           this.take(p); break;
         }
       }
     }
-    take(p) { const b = this.ball; b.owner = p; b.last = p.t; b.protect = 0.4; b.passTo = null; b.shot = false; b.z = 0; b.vz = 0; if (p.t === 0) this.ctrl = p; }
+    take(p) {
+      const b = this.ball, k = b.lastKicker;
+      if (k && k !== p && k.t === p.t && b.passTo !== undefined && !b.shot && !b.owner && b.lastKicker !== b.counted) { this.st.passes[p.t]++; k.ps.pa++; this.chain = (k.t === this.chainT ? this.chain : 0) + 1; this.chainT = k.t; if (this.chain === 6) this.say(pick(['Lovely passing move here!', 'They are keeping the ball beautifully!', 'Six passes in a row. Patient build-up!'])); }
+      else if (k && k.t !== p.t) this.chain = 0;
+      b.counted = k;
+      b.owner = p; b.last = p.t; b.protect = 0.4; b.passTo = null; b.shot = false; b.z = 0; b.vz = 0; if (p.t === 0) this.ctrl = p; }
+    saved(p) { this.st.saves[p.t]++; this.st.sot[1 - p.t]++; p.ps.sv++; this.say(pick([`Great save by ${p.sp.name.split(' ').pop()}!`, `Denied! The keeper stands tall.`, `What a stop from ${p.sp.name.split(' ').pop()}!`]), true); }
     restart(t, x, y, label, gk) {
       const b = this.ball; this.state = 'restart'; this.stateT = 0.9; this.flash(label);
       b.vx = b.vy = 0; b.owner = null; b.x = clamp(x, 0.3, L - 0.3); b.y = clamp(y, 0.3, W - 0.3); b.z = 0;
@@ -400,6 +481,8 @@
       const scorer = k && k.t === t ? k : null;
       const name = scorer ? scorer.sp.name : 'Own goal';
       if (t === 0 && scorer) this.scorers.push(scorer.sp.id);
+      this.st.sot[t]++; if (scorer) { scorer.ps.g++; const a = b.counted; if (a && a !== scorer && a.t === t) a.ps.as++; }
+      this.say(scorer ? pick([`GOAL! ${name} finds the net!`, `GOAL! What a finish from ${name}!`, `It's in! ${name} scores!`]) : 'GOAL! An own goal!', true);
       this.events.push({ t, min: this.minute(), name });
       this.state = 'goal'; this.stateT = 2.6; this.banner = 'GOAL!'; this.goalName = name + ' ' + this.minute() + "'"; this.goalTeam = t;
       b.vx *= 0.3; b.vy *= 0.3; b.x = clamp(b.x, -1.5, L + 1.5);
@@ -407,8 +490,18 @@
       this.after = () => { this.goalName = ''; this.kickoff(1 - t); };
       if (this.cfg.onGoal) this.cfg.onGoal(t, name);
     }
+    clock() { const t = Math.min(90 * 60, Math.floor(this.elapsed / this.total * 90 * 60)); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); }
+    setMent(v) { this.ment[0] = v; }
     minute() { return Math.min(90, Math.floor(this.elapsed / this.total * 90) + 1); }
-    result() { return { my: this.score[0], opp: this.score[1], scorers: this.scorers, events: this.events }; }
+    result() {
+      const mo = KK.meta ? KK.meta.motm(this.ents, this.score) : null;
+      const pl = mo ? mo.ratings.map(x => ({ t: x.e.t, id: x.e.sp.id, name: x.e.sp.name, pos: x.e.pos, r: x.r, ps: x.e.ps, rating: x.e.sp.rating })) : [];
+      const tot = this.st.poss[0] + this.st.poss[1] || 1;
+      return { my: this.score[0], opp: this.score[1], scorers: this.scorers, events: this.events, played: true,
+        stats: { ...this.st, possPct: [Math.round(this.st.poss[0] / tot * 100), 100 - Math.round(this.st.poss[0] / tot * 100)] },
+        motm: mo && mo.best ? { t: mo.best.t, id: mo.best.sp.id, name: mo.best.sp.name, pos: mo.best.pos, r: mo.rating, ps: mo.best.ps, sp: mo.best.sp } : null, ratings: pl,
+        teams: this.teams.map(t => ({ name: t.name, short: t.short })) };
+    }
     simRest() {
       const left = 1 - this.elapsed / this.total; const r0 = this.teams[0].rating, r1 = this.teams[1].rating;
       const [a, c] = KK.simScore(r0, r1);
@@ -506,14 +599,32 @@
     }
     drawOverlay3D() {
       const p = this.ctrl; if (!p) return;
-      const g = this.g, dpr = this.dpr, top = this.r3.project(p.x, p.y, 3.2), foot = this.r3.project(p.x, p.y, 0);
-      if (!top || !foot) return;
-      const x = top[0] * dpr, y = top[1] * dpr, fx = foot[0] * dpr, fy = foot[1] * dpr, w = 34 * dpr;
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = `bold ${Math.round(12 * dpr)}px Arial`; g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 3 * dpr; const nm = p.sp.name.split(' ').pop();
-      g.strokeText(nm, x, y - 8 * dpr); g.fillText(nm, x, y - 8 * dpr);
-      g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(fx - w / 2, fy + 8 * dpr, w, 3 * dpr); g.fillStyle = p.stam > 0.3 ? '#76ff03' : '#ff5252'; g.fillRect(fx - w / 2, fy + 8 * dpr, w * p.stam, 3 * dpr);
-      if (this.input.shootDown && this.ball.owner === p) { const pw = Math.min(this.input.shootT, 0.6) / 0.6; g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(fx - w / 2, fy + 13 * dpr, w, 4 * dpr); g.fillStyle = '#ff9800'; g.fillRect(fx - w / 2, fy + 13 * dpr, w * pw, 4 * dpr); }
+      const g = this.g, dpr = this.dpr, b = this.ball, r3 = this.r3;
+      // name labels: controlled player + key nearby players
+      const set = new Set([p]); if (b.owner) set.add(b.owner); if (b.passTo) set.add(b.passTo);
+      const near = this.ents.filter(e => !set.has(e)).sort((a, c) => hyp(a.x - b.x, a.y - b.y) - hyp(c.x - b.x, c.y - b.y));
+      for (const e of near) { if (set.size >= 4 || hyp(e.x - b.x, e.y - b.y) > 14) break; set.add(e); }
+      g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.font = `600 ${Math.round(12 * dpr)}px Arial, sans-serif`;
+      g.shadowColor = 'rgba(0,0,0,.85)'; g.shadowBlur = 3 * dpr; g.shadowOffsetX = dpr; g.shadowOffsetY = dpr;
+      const placed = [];
+      for (const e of set) {
+        const top = r3.project(e.x, e.y, 2.3); if (!top) continue;
+        const nm = e.sp.name.split(' ').pop(), x = top[0] * dpr, y = top[1] * dpr - (e === p ? 26 : 4) * dpr, hw = g.measureText(nm).width / 2 + 3 * dpr;
+        if (placed.some(q => Math.abs(q[0] - x) < q[2] + hw && Math.abs(q[1] - y) < 14 * dpr)) continue; // no overlapping labels
+        placed.push([x, y, hw]); g.fillStyle = '#fff'; g.fillText(nm, x, y);
+      }
+      g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetX = g.shadowOffsetY = 0;
+      // green teardrop marker over the controlled player
+      const top = r3.project(p.x, p.y, 2.3); if (!top) return;
+      const x = top[0] * dpr, y = top[1] * dpr - 3 * dpr, rr = 6.5 * dpr;
+      g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x - rr * 0.4, y - rr * 1.2, x - rr * 1.15, y - rr * 1.5, x - rr * 1.15, y - rr * 2.25);
+      g.arc(x, y - rr * 2.25, rr * 1.15, Math.PI, 0); g.bezierCurveTo(x + rr * 1.15, y - rr * 1.5, x + rr * 0.4, y - rr * 1.2, x, y); g.closePath();
+      g.fillStyle = this.sprinting() ? '#9dff3c' : '#35e06a'; g.fill(); g.lineWidth = 1.5 * dpr; g.strokeStyle = 'rgba(255,255,255,.95)'; g.stroke();
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y - rr * 2.25, rr * 0.38, 0, 7); g.fill();
+      const foot = r3.project(p.x, p.y, 0); if (!foot) return;
+      const fx = foot[0] * dpr, fy = foot[1] * dpr, w = 30 * dpr;
+      if (p.stam < 0.6 || this.sprinting()) { g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(fx - w / 2, fy + 6 * dpr, w, 3 * dpr); g.fillStyle = p.stam > 0.3 ? '#76ff03' : '#ff5252'; g.fillRect(fx - w / 2, fy + 6 * dpr, w * p.stam, 3 * dpr); }
+      if (this.input.shootDown && b.owner === p) { const pw = Math.min(this.input.shootT, 0.6) / 0.6; g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(fx - w / 2, fy + 11 * dpr, w, 4 * dpr); g.fillStyle = '#ff9800'; g.fillRect(fx - w / 2, fy + 11 * dpr, w * pw, 4 * dpr); }
     }
     drawBanners() {
       const g = this.g, cv = this.cv, dpr = this.dpr;
@@ -524,10 +635,30 @@
         g.lineWidth = 6 * dpr; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(txt, cv.width / 2, y);
         g.fillStyle = txt === 'GOAL!' ? '#ffeb3b' : '#fff'; g.fillText(txt, cv.width / 2, y);
         if (this.state === 'goal' && this.goalName) { g.font = `bold ${Math.round(16 * dpr)}px Arial`; g.lineWidth = 4 * dpr; g.strokeText('⚽ ' + this.goalName, cv.width / 2, y + 38 * dpr); g.fillStyle = '#fff'; g.fillText('⚽ ' + this.goalName, cv.width / 2, y + 38 * dpr); }
-        if (this.state === 'kickoff' && this.ball.owner && this.ball.owner.t === 0) { g.font = `bold ${Math.round(13 * dpr)}px Arial`; g.fillStyle = '#fff'; g.fillText('Tap PASS or SHOOT to start', cv.width / 2, y + 34 * dpr); }
+        if (this.state === 'kickoff' && this.ball.owner && this.ball.owner.t === 0) { g.font = `bold ${Math.round(13 * dpr)}px Arial`; g.fillStyle = '#fff'; g.fillText('Press A or B to kick off', cv.width / 2, y + 34 * dpr); }
       }
     }
     drawRadar() {
+      const mc = this.cfg.mini;
+      if (!mc || !mc.offsetWidth) return this.drawRadarOld();
+      const r = mc.getBoundingClientRect(), dpr = this.dpr, wv = Math.round(r.width * dpr), hv = Math.round(r.height * dpr);
+      if (mc.width !== wv || mc.height !== hv) { mc.width = wv; mc.height = hv; }
+      const g = mc.getContext('2d'), vert = hv > wv, pad = 3 * dpr, rw = wv - 2 * pad, rh = hv - 2 * pad;
+      g.clearRect(0, 0, wv, hv); g.fillStyle = 'rgba(20,60,30,.35)'; g.fillRect(0, 0, wv, hv);
+      const map = (x, y) => vert ? [pad + y / W * rw, pad + (1 - x / L) * rh] : [pad + x / L * rw, pad + y / W * rh];
+      g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = Math.max(1, dpr);
+      const rect = (x0, y0, x1, y1) => { const [a, c] = map(x0, y0), [d, e] = map(x1, y1); g.strokeRect(Math.min(a, d), Math.min(c, e), Math.abs(d - a), Math.abs(e - c)); };
+      rect(0, 0, L, W); rect(0, CY - BOX_H, BOX_D, CY + BOX_H); rect(L - BOX_D, CY - BOX_H, L, CY + BOX_H);
+      const [m0x, m0y] = map(L / 2, 0), [m1x, m1y] = map(L / 2, W); g.beginPath(); g.moveTo(m0x, m0y); g.lineTo(m1x, m1y); g.stroke();
+      const [cx, cy] = map(L / 2, CY); g.beginPath(); g.arc(cx, cy, 9.15 / L * (vert ? rh : rw), 0, 7); g.stroke();
+      for (const p of this.ents) {
+        const [x, y] = map(p.x, p.y), tm = this.teams[p.t];
+        g.fillStyle = p.pos === 'GK' ? tm.gk : tm.shirt; g.beginPath(); g.arc(x, y, (p === this.ctrl ? 3.4 : 2.6) * dpr, 0, 7); g.fill();
+        g.lineWidth = dpr; g.strokeStyle = p === this.ctrl ? '#35e06a' : 'rgba(0,0,0,.7)'; if (p === this.ctrl) g.lineWidth = 2 * dpr; g.stroke();
+      }
+      const [bx, by] = map(this.ball.x, this.ball.y); g.fillStyle = '#fff'; g.beginPath(); g.arc(bx, by, 2 * dpr, 0, 7); g.fill(); g.strokeStyle = '#000'; g.lineWidth = dpr; g.stroke();
+    }
+    drawRadarOld() {
       const g = this.g, dpr = this.dpr, cv = this.cv;
       const rw = (this.vertical ? 56 : 92) * dpr, rh = (this.vertical ? 86 : 60) * dpr, x0 = cv.width - rw - 8 * dpr, y0 = (this.vertical ? 64 : 52) * dpr;
       g.fillStyle = 'rgba(0,40,0,.55)'; g.fillRect(x0, y0, rw, rh); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 1; g.strokeRect(x0, y0, rw, rh);

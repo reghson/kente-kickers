@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Kente Kickers — Build your club, win the league</title>
 <meta name="description" content="Kente Kickers: an original free football game. Build your own club, manage your squad and play real-time matches on your phone. Works offline.">
-<meta name="theme-color" content="#0d2b14">
+<meta name="theme-color" content="#081633">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,12 +18,12 @@
 <div id="app">
   <header id="topbar" class="hidden">
     <div class="tb-team"><span id="tb-crest"></span><div><b id="tb-name"></b><small id="tb-div"></small></div></div>
-    <div class="tb-right"><span class="coins" id="tb-coins">0</span><button id="tb-mute" class="icon-btn" aria-label="Sound on/off">🔊</button></div>
+    <div class="tb-right"><span class="lvl" id="tb-lvl">Lv 1</span><span class="coins" id="tb-coins">0</span><span class="goldk" id="tb-gold">0</span><button id="tb-mute" class="icon-btn" aria-label="Sound on/off">🔊</button></div>
   </header>
   <main id="screen"></main>
   <nav id="bottomnav" class="hidden">
     <button data-go="hub">🏠<span>Home</span></button>
-    <button data-go="squad">👕<span>Squad</span></button>
+    <button data-go="squad">👕<span>Team</span></button>
     <button data-go="market">💱<span>Transfers</span></button>
     <button data-go="league">📊<span>League</span></button>
     <button data-go="cups">🏆<span>Cups</span></button>
@@ -35,16 +35,21 @@
   <canvas id="pitch3d" class="hidden"></canvas>
   <canvas id="pitch"></canvas>
   <div id="hud">
-    <button id="m-pause" class="hud-btn" aria-label="Pause">⏸</button>
-    <div id="scorebar"><span id="h-crest"></span><b id="h-name">HOM</b><span id="h-score">0 - 0</span><b id="a-name">AWY</b><span id="a-crest"></span><span id="h-time">0'</span></div>
-    <button id="m-mute" class="hud-btn" aria-label="Sound">🔊</button>
+    <button id="m-pause" class="hud-sq" aria-label="Pause"><i></i><i></i></button>
+    <div id="scorebar"><span id="h-crest"></span><b id="h-name">HOM</b><span id="h-score">0 - 0</span><b id="a-name">AWY</b><span id="a-crest"></span></div>
+    <span id="h-time">00:00</span>
+    <button id="m-tac" class="hud-sq tac" aria-label="Tactics"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="#fff" stroke-width="2"/><circle cx="9" cy="9" r="1.6" fill="#fff"/><circle cx="15" cy="9" r="1.6" fill="#fff"/><circle cx="12" cy="15" r="1.6" fill="#fff"/></svg></button>
   </div>
-  <div id="joyzone"><div id="joybase"><div id="joyknob"></div></div><div id="joyhint">Drag here to move</div></div>
+  <div id="commentary" class="hidden"></div>
+  <div id="joyzone"><div id="joybase"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" class="jring"/><path d="M50 7 l-6 8 h12z M50 93 l-6 -8 h12z M7 50 l8 -6 v12z M93 50 l-8 -6 v12z" class="jtick"/></svg><div id="joyknob"></div></div></div>
   <div id="btnzone">
-    <button id="b-tackle" class="act small">TACKLE<br><small>/ sprint</small></button>
-    <button id="b-pass" class="act mid">PASS</button>
-    <button id="b-shoot" class="act big">SHOOT</button>
+    <button id="b-c" class="act" data-k="C"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="ring"/><circle cx="50" cy="50" r="30" class="core"/><path id="arcC" d="M 12 54 A 38 38 0 0 1 88 54" fill="none"/><text class="lbl"><textPath href="#arcC" startOffset="50%" text-anchor="middle">LOFTED KICK</textPath></text><text x="50" y="62" class="ltr" text-anchor="middle">C</text></svg></button>
+    <button id="b-b" class="act" data-k="B"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="ring"/><circle cx="50" cy="50" r="30" class="core"/><path id="arcB" d="M 12 54 A 38 38 0 0 1 88 54" fill="none"/><text class="lbl"><textPath href="#arcB" startOffset="50%" text-anchor="middle">LOW KICK</textPath></text><text x="50" y="62" class="ltr" text-anchor="middle">B</text></svg></button>
+    <button id="b-a" class="act" data-k="A"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="ring"/><circle cx="50" cy="50" r="30" class="core"/><path id="arcA" d="M 12 54 A 38 38 0 0 1 88 54" fill="none"/><text class="lbl"><textPath href="#arcA" startOffset="50%" text-anchor="middle">HARD KICK</textPath></text><text x="50" y="62" class="ltr" text-anchor="middle">A</text></svg></button>
+    <button id="b-sprint" class="act-s" aria-label="Sprint">SPRINT</button>
   </div>
+  <div id="mapbox"><canvas id="minimap"></canvas><button id="m-ment"><i class="chev"></i><span>BALANCED</span><i class="chev"></i></button></div>
+  <div id="rotate" class="hidden"><div class="rot-card"><div class="rot-ico">📱</div><h3>Turn your phone sideways</h3><p>Kente Kickers plays best in landscape.</p><button id="rot-go" class="btn">Go fullscreen landscape</button><button id="rot-skip" class="btn ghost">Play in portrait</button></div></div>
   <div id="m-overlay" class="hidden"></div>
 </div>
 
@@ -54,6 +59,7 @@
 <script src="js/data.js"></script>
 <script src="js/europe.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/meta.js"></script>
 <script src="js/match.js"></script>
 <script src="js/ui.js"></script>
 </body>
