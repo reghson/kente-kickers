@@ -46,24 +46,41 @@ export function create(canvas, opts = {}) {
     })).catch((e) => console.warn('[kk] skinned players unavailable:', e && e.message));
   }
 
-  // ---------- lights (night match under floodlights) ----------
-  const hemi = new THREE.HemisphereLight('#f4f8ff', '#41622f', 1.9); scene.add(hemi);
-  const sun = new THREE.DirectionalLight('#ffffff', 2.2); sun.position.set(-25, 50, 20); scene.add(sun); scene.add(sun.target);
+  // ---------- lights (DLS stadium floodlight broadcast rig) ----------
+  const hemi = new THREE.HemisphereLight('#eef5ff', '#355c27', 1.85); scene.add(hemi);
+  const sun = new THREE.DirectionalLight('#fffbf0', 2.35); sun.position.set(-25, 50, 20); scene.add(sun); scene.add(sun.target);
+  const rim = new THREE.DirectionalLight('#9ec5ff', 0.65); rim.position.set(28, 32, -26); scene.add(rim);
   if (high) {
     sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
     const sc = sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 30; sc.bottom = -30; sc.near = 1; sc.far = 140;
     sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.02;
   }
 
-  // ---------- ground + pitch: concentric mowing rings + faint stripes ----------
+  // ---------- ground + pitch: DLS lush emerald & lime checkered mowing stripes ----------
   const MARGIN = 3, TW = high ? 2048 : 1024, PW = L + MARGIN * 2, PH = W + MARGIN * 2, TH = Math.round(TW * PH / PW);
   const pitchTex = keep(canvasTex(TW, TH, (g, w, h) => {
     const k = w / PW; g.scale(k, k); g.translate(MARGIN, MARGIN);
-    g.fillStyle = '#4f9a32'; g.fillRect(-MARGIN, -MARGIN, PW, PH);
-    const R = Math.hypot(HL + MARGIN, CY + MARGIN), band = 3.6;
-    for (let r = Math.ceil(R / band) * band, i = 0; r > 0; r -= band, i++) { g.fillStyle = i % 2 ? '#5aa83a' : '#4d9a31'; g.beginPath(); g.arc(HL, CY, r, 0, Math.PI * 2); g.fill(); }
-    for (let i = 0; i < 20; i++) { g.fillStyle = i % 2 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.03)'; g.fillRect(i * L / 20 - (i === 0 ? MARGIN : 0), -MARGIN, L / 20 + (i === 0 || i === 19 ? MARGIN : 0) + 0.02, PH); }
-    for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '0,30,0' : '220,255,200'},0.05)`; g.fillRect(Math.random() * PW - MARGIN, Math.random() * PH - MARGIN, 0.5, 0.5); }
+    g.fillStyle = '#338a2e'; g.fillRect(-MARGIN, -MARGIN, PW, PH);
+    // DLS crisp vertical mowing bands
+    const N = 18, bw = L / N;
+    for (let i = 0; i < N; i++) {
+      g.fillStyle = i % 2 === 0 ? '#3ea336' : '#31892c';
+      g.fillRect(i * bw, 0, bw + 0.03, W);
+    }
+    // Subtle horizontal cross-cut checkered sheen
+    const M = 10, bh = W / M;
+    for (let j = 0; j < M; j++) {
+      g.fillStyle = j % 2 === 0 ? 'rgba(255,255,255,0.035)' : 'rgba(0,25,0,0.035)';
+      g.fillRect(0, j * bh, L, bh);
+    }
+    // Center circle subtle mow ring
+    g.strokeStyle = 'rgba(255,255,255,0.04)'; g.lineWidth = 2.4;
+    g.beginPath(); g.arc(HL, CY, 9.15, 0, Math.PI * 2); g.stroke();
+    // Fine turf blade micro-texture
+    for (let i = 0; i < 3200; i++) {
+      g.fillStyle = `rgba(${Math.random() < 0.5 ? '0,35,0' : '215,255,190'},0.055)`;
+      g.fillRect(Math.random() * PW - MARGIN, Math.random() * PH - MARGIN, 0.45, 0.45);
+    }
   }));
   pitchTex.anisotropy = Math.max(aniso, Math.min(4, renderer.capabilities.getMaxAnisotropy()));
   const pitch = new THREE.Mesh(keep(new THREE.PlaneGeometry(PW, PH)), keep(new THREE.MeshLambertMaterial({ map: pitchTex })));
@@ -84,13 +101,24 @@ export function create(canvas, opts = {}) {
     });
     [[0, 0, 0], [L, 0, Math.PI / 2], [L, W, Math.PI], [0, W, -Math.PI / 2]].forEach(([x, y, a]) => arc(x, y, 1, a, a + Math.PI / 2, 6));
     const lg = keep(new THREE.BufferGeometry()); lg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const lines = new THREE.Mesh(lg, keep(new THREE.MeshBasicMaterial({ color: '#f4f7f2', side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
+    const lines = new THREE.Mesh(lg, keep(new THREE.MeshBasicMaterial({ color: '#f8faf6', side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
     lines.renderOrder = 1; scene.add(lines);
   }
-  const outerMat = keep(new THREE.MeshLambertMaterial({ color: '#3f7f2a' }));
+  // Corner flags + DLS stadium track perimeter
+  {
+    const flagPoleGeo = keep(new THREE.CylinderGeometry(0.025, 0.025, 1.5, 6));
+    const flagClothGeo = keep(new THREE.PlaneGeometry(0.42, 0.28));
+    const flagPoleMat = keep(new THREE.MeshLambertMaterial({ color: '#ffffff' }));
+    const flagClothMat = keep(new THREE.MeshBasicMaterial({ color: '#ffeb3b', side: THREE.DoubleSide }));
+    [[-HL, -CY], [HL, -CY], [HL, CY], [-HL, CY]].forEach(([cx, cz]) => {
+      const pole = new THREE.Mesh(flagPoleGeo, flagPoleMat); pole.position.set(cx, 0.75, cz); scene.add(pole);
+      const cloth = new THREE.Mesh(flagClothGeo, flagClothMat); cloth.position.set(cx + 0.21, 1.34, cz); scene.add(cloth);
+    });
+  }
+  const outerMat = keep(new THREE.MeshLambertMaterial({ color: '#1b3d24' }));
   const outer = new THREE.Mesh(keep(new THREE.PlaneGeometry(220, 170)), outerMat);
   outer.rotation.x = -Math.PI / 2; outer.position.y = -0.02; scene.add(outer);
-  const surroundMat = keep(new THREE.MeshLambertMaterial({ color: '#46872e' }));
+  const surroundMat = keep(new THREE.MeshLambertMaterial({ color: '#275932' }));
   const track = new THREE.Mesh(keep(new THREE.PlaneGeometry(PW + 14, PH + 14)), surroundMat);
   track.rotation.x = -Math.PI / 2; track.position.y = -0.01; scene.add(track);
 
@@ -147,17 +175,17 @@ export function create(canvas, opts = {}) {
   }
   buildStands(2);
 
-  // ---------- animated LED advertising boards (invented sponsors only) ----------
-  const SPONSORS = ['KENTE KICKERS', 'PLAY FAIR', 'GHANA ROAD TO GLORY'];
+  // ---------- animated LED advertising boards (DLS broadcast look) ----------
+  const SPONSORS = ['DREAM LEAGUE', 'KENTE KICKERS', 'LIVE MATCHDAY'];
   const ledTex = (pal) => keep(canvasTex(1536, 64, (g, w, h) => {
     SPONSORS.forEach((txt, i) => {
       const x0 = i * 512, gr = g.createLinearGradient(x0, 0, x0 + 512, h);
       gr.addColorStop(0, pal[i % 3][0]); gr.addColorStop(1, pal[i % 3][1]); g.fillStyle = gr; g.fillRect(x0, 0, 512, h);
-      g.fillStyle = 'rgba(255,255,255,.12)'; for (let k = 0; k < 6; k++) { g.beginPath(); g.moveTo(x0 + k * 90, h); g.lineTo(x0 + k * 90 + 40, 0); g.lineTo(x0 + k * 90 + 70, 0); g.lineTo(x0 + k * 90 + 30, h); g.fill(); }
-      g.font = '900 34px Arial Black, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.fillText(txt, x0 + 256, h / 2 + 2);
+      g.fillStyle = 'rgba(255,255,255,.14)'; for (let k = 0; k < 6; k++) { g.beginPath(); g.moveTo(x0 + k * 90, h); g.lineTo(x0 + k * 90 + 40, 0); g.lineTo(x0 + k * 90 + 70, 0); g.lineTo(x0 + k * 90 + 30, h); g.fill(); }
+      g.font = 'italic 900 34px Arial Black, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.fillText(txt, x0 + 256, h / 2 + 2);
     });
   }));
-  const LED = [ledTex([['#0b1640', '#c2185b'], ['#003c2a', '#00bcd4'], ['#3a0d0d', '#fcd116']]), ledTex([['#ce1126', '#fcd116'], ['#1a237e', '#7c4dff'], ['#006b3f', '#111111']])];
+  const LED = [ledTex([['#061838', '#00a896'], ['#0d2459', '#00e5ff'], ['#1e1035', '#ffd166']]), ledTex([['#004d40', '#00e676'], ['#0a1931', '#2979ff'], ['#3a0ca3', '#f72585']])];
   LED.forEach((t) => { t.wrapS = THREE.RepeatWrapping; });
   const boardMats = [];
   const boardMatFor = (len, i) => {
@@ -181,42 +209,52 @@ export function create(canvas, opts = {}) {
 
   // ---------- ball ----------
   const BR = 0.22;
-  const ballGeo = keep(new THREE.IcosahedronGeometry(BR, 1));
-  { const n = ballGeo.attributes.position.count, col = new Float32Array(n * 3); for (let f = 0; f < n / 3; f++) { const dark = [0, 5, 9, 14, 22, 27, 33, 38, 45, 51, 56, 62, 68, 73].includes(f); for (let v = 0; v < 3; v++) col.set(dark ? [0.08, 0.08, 0.1] : [1, 1, 1], (f * 3 + v) * 3); } ballGeo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
-  const ball = new THREE.Mesh(ballGeo, keep(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+  const ballGeo = keep(new THREE.IcosahedronGeometry(BR, 2));
+  { const n = ballGeo.attributes.position.count, col = new Float32Array(n * 3); for (let f = 0; f < n / 3; f++) { const dark = f % 7 === 0 || f % 13 === 0; const seam = f % 5 === 2; for (let v = 0; v < 3; v++) col.set(dark ? [0.07, 0.09, 0.14] : seam ? [0.0, 0.72, 0.84] : [0.98, 0.99, 1.0], (f * 3 + v) * 3); } ballGeo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
+  const ball = new THREE.Mesh(ballGeo, keep(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 45, specular: new THREE.Color('#444444') })));
   ball.castShadow = high; scene.add(ball);
   const blobTex = keep(canvasTex(64, 64, (g, w) => { const gr = g.createRadialGradient(32, 32, 2, 32, 32, 31); gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, w); }));
   const blobMat = keep(new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
   const blobGeo = keep(new THREE.PlaneGeometry(1, 1)); blobGeo.rotateX(-Math.PI / 2);
   const ballShadow = new THREE.Mesh(blobGeo, blobMat); ballShadow.renderOrder = 1; scene.add(ballShadow);
 
-  // ---------- humanoid (slim, realistic; parts merged per bone with vertex colours = few draw calls) ----------
-  const seg = high ? 10 : 7;
+  // ---------- humanoid (anatomical human with face features; parts merged per bone with vertex colours) ----------
+  const seg = high ? 12 : 8;
   const G = {
-    pelvis: keep(new THREE.CylinderGeometry(0.15, 0.165, 0.2, seg)),
-    torso: keep(new THREE.CylinderGeometry(0.2, 0.15, 0.5, seg)),
-    shoulder: keep(new THREE.SphereGeometry(0.068, seg, 5)),
-    neck: keep(new THREE.CylinderGeometry(0.048, 0.055, 0.12, 6)),
-    head: keep(new THREE.SphereGeometry(0.104, seg + 2, seg)),
-    capTop: keep(new THREE.SphereGeometry(0.112, seg + 2, 5, 0, Math.PI * 2, 0, Math.PI * 0.52)),
-    afro: keep(new THREE.SphereGeometry(0.14, seg, seg - 2)),
+    pelvis: keep(new THREE.CylinderGeometry(0.152, 0.168, 0.21, seg)),
+    torso: keep(new THREE.CylinderGeometry(0.215, 0.152, 0.5, seg)),
+    pectoral: keep(new THREE.SphereGeometry(0.088, seg, 6)),
+    shoulder: keep(new THREE.SphereGeometry(0.074, seg, 6)),
+    neck: keep(new THREE.CylinderGeometry(0.052, 0.058, 0.13, 8)),
+    head: keep(new THREE.SphereGeometry(0.106, seg + 4, seg + 2)),
+    jaw: keep(new THREE.CylinderGeometry(0.082, 0.058, 0.085, seg)),
+    nose: keep(new THREE.ConeGeometry(0.018, 0.042, 5)),
+    ear: keep(new THREE.SphereGeometry(0.022, 5, 4)),
+    eye: keep(new THREE.SphereGeometry(0.014, 6, 5)),
+    pupil: keep(new THREE.SphereGeometry(0.008, 5, 4)),
+    brow: keep(new THREE.BoxGeometry(0.032, 0.008, 0.012)),
+    mouth: keep(new THREE.BoxGeometry(0.036, 0.009, 0.01)),
+    capTop: keep(new THREE.SphereGeometry(0.114, seg + 2, 6, 0, Math.PI * 2, 0, Math.PI * 0.54)),
+    afro: keep(new THREE.SphereGeometry(0.142, seg, seg - 1)),
     longBack: keep(new THREE.BoxGeometry(0.2, 0.26, 0.06)),
     bun: keep(new THREE.SphereGeometry(0.05, 6, 5)),
-    sleeve: keep(new THREE.CylinderGeometry(0.056, 0.05, 0.16, seg)),
-    uArm: keep(new THREE.CapsuleGeometry(0.038, 0.2, 2, 6)),
-    fArm: keep(new THREE.CapsuleGeometry(0.033, 0.2, 2, 6)),
-    hand: keep(new THREE.SphereGeometry(0.042, 6, 5)),
-    shortLeg: keep(new THREE.CylinderGeometry(0.088, 0.08, 0.22, seg)),
-    thigh: keep(new THREE.CapsuleGeometry(0.066, 0.3, 2, seg)),
-    shin: keep(new THREE.CylinderGeometry(0.058, 0.045, 0.4, seg)),
-    calf: keep(new THREE.SphereGeometry(0.062, 6, 6)),
-    boot: keep(new THREE.BoxGeometry(0.09, 0.07, 0.25)),
+    sleeve: keep(new THREE.CylinderGeometry(0.06, 0.052, 0.17, seg)),
+    uArm: keep(new THREE.CapsuleGeometry(0.042, 0.2, 3, 8)),
+    fArm: keep(new THREE.CapsuleGeometry(0.036, 0.2, 3, 8)),
+    hand: keep(new THREE.SphereGeometry(0.042, 7, 6)),
+    shortLeg: keep(new THREE.CylinderGeometry(0.092, 0.082, 0.23, seg)),
+    thigh: keep(new THREE.CapsuleGeometry(0.072, 0.3, 3, seg)),
+    knee: keep(new THREE.SphereGeometry(0.058, 7, 6)),
+    shin: keep(new THREE.CylinderGeometry(0.06, 0.044, 0.4, seg)),
+    calf: keep(new THREE.SphereGeometry(0.066, 7, 6)),
+    boot: keep(new THREE.BoxGeometry(0.092, 0.068, 0.255)),
+    sole: keep(new THREE.BoxGeometry(0.094, 0.018, 0.26)),
     num: keep(new THREE.PlaneGeometry(0.2, 0.2)),
   };
-  const SKIN = ['#4a2c1c', '#5a3825', '#6e4630', '#8d5a3b', '#b07650', '#d9a77c', '#f1c9a5'];
-  const HAIRC = ['#141010', '#2a1b12', '#4a2f1a', '#8a5a2b', '#d8b46a', '#b5562a', '#e8d9a0'];
-  const BOOTC = ['#141414', '#f5f5f5', '#ff5722', '#00e5ff', '#c6ff00', '#1e88e5'];
-  const vcMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const SKIN = ['#3d2316', '#4e2f1e', '#633d28', '#815236', '#a46d4b', '#c9936e', '#e3b592', '#f1c9a8'];
+  const HAIRC = ['#110e0d', '#241710', '#422917', '#7b4f25', '#c8a258', '#9e4720', '#dfd098'];
+  const BOOTC = ['#141414', '#f5f5f5', '#ff3d00', '#00e5ff', '#aeea00', '#2979ff'];
+  const vcMat = keep(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 18, specular: new THREE.Color('#22201d') }));
   const _m = new THREE.Matrix4(), _n = new THREE.Matrix3(), _c = new THREE.Color(), _v = new THREE.Vector3();
   // merge [{geo, color, pos:[x,y,z], scale:[x,y,z], rot:[x,y,z]}] into one vertex-coloured geometry
   function merge(parts) {
@@ -245,42 +283,64 @@ export function create(canvas, opts = {}) {
   }
   function hairParts(style, hc) {
     const hp = [];
-    if (style === 0) hp.push({ geo: G.capTop, color: hc, pos: [0, 0.012, -0.008], rot: [-0.25, 0, 0] });
-    else if (style === 1) hp.push({ geo: G.capTop, color: hc, pos: [0, 0.0, -0.004], rot: [-0.2, 0, 0], scale: [0.96, 0.9, 0.96] });
-    else if (style === 2) hp.push({ geo: G.afro, color: hc, pos: [0, 0.05, -0.02] });
-    else if (style === 3) { hp.push({ geo: G.capTop, color: hc, pos: [0, 0.012, -0.008], rot: [-0.25, 0, 0], scale: [1.05, 1, 1.05] }); hp.push({ geo: G.longBack, color: hc, pos: [0, -0.1, -0.075], rot: [0.12, 0, 0] }); }
-    else if (style === 4) { hp.push({ geo: G.capTop, color: hc, pos: [0, 0.012, -0.008], rot: [-0.25, 0, 0] }); hp.push({ geo: G.bun, color: hc, pos: [0, 0.07, -0.11] }); }
-    else if (style === 5) hp.push({ geo: G.capTop, color: hc, pos: [0, 0.03, -0.0], scale: [1, 1.25, 1.02], rot: [-0.1, 0, 0] });
+    if (style === 0) hp.push({ geo: G.capTop, color: hc, pos: [0, 0.015, -0.008], rot: [-0.25, 0, 0] });
+    else if (style === 1) hp.push({ geo: G.capTop, color: hc, pos: [0, 0.004, -0.004], rot: [-0.2, 0, 0], scale: [0.97, 0.92, 0.97] });
+    else if (style === 2) hp.push({ geo: G.afro, color: hc, pos: [0, 0.052, -0.02] });
+    else if (style === 3) { hp.push({ geo: G.capTop, color: hc, pos: [0, 0.015, -0.008], rot: [-0.25, 0, 0], scale: [1.05, 1, 1.05] }); hp.push({ geo: G.longBack, color: hc, pos: [0, -0.1, -0.075], rot: [0.12, 0, 0] }); }
+    else if (style === 4) { hp.push({ geo: G.capTop, color: hc, pos: [0, 0.015, -0.008], rot: [-0.25, 0, 0] }); hp.push({ geo: G.bun, color: hc, pos: [0, 0.07, -0.11] }); }
+    else if (style === 5) hp.push({ geo: G.capTop, color: hc, pos: [0, 0.032, -0.0], scale: [1, 1.25, 1.02], rot: [-0.1, 0, 0] });
     return hp; // style 6 = bald
   }
-  // generic figure. look = {shirt, shorts, socks, boots, skin, hair, hairStyle, gloves, sleeveLong}
+  // generic human figure. look = {shirt, shorts, socks, boots, skin, hair, hairStyle, gloves, sleeveLong}
   function buildFigure(look, opt = {}) {
     const root = new THREE.Group(), hips = new THREE.Group(); root.add(hips); root.scale.setScalar(PS * (look.size || 1));
     const add = (parent, parts) => { const m = new THREE.Mesh(merge(parts), vcMat); m.castShadow = high && !opt.noShadow; parent.add(m); perMatch.push(m.geometry); return m; };
     hips.position.y = HIPY;
-    add(hips, [{ geo: G.pelvis, color: look.shorts, pos: [0, -0.02, 0], scale: [1, 1, 0.72] }]);
+    add(hips, [{ geo: G.pelvis, color: look.shorts, pos: [0, -0.02, 0], scale: [1, 1, 0.74] }]);
     const chest = new THREE.Group(); chest.position.y = 0.06; hips.add(chest);
-    const torso = [{ geo: G.torso, color: look.shirt, pos: [0, 0.27, 0], scale: [1, 1, 0.6] }, { geo: G.shoulder, color: look.shirt, pos: [0.19, 0.48, 0] }, { geo: G.shoulder, color: look.shirt, pos: [-0.19, 0.48, 0] }, { geo: G.neck, color: look.skin, pos: [0, 0.56, 0] }];
+    const torso = [
+      { geo: G.torso, color: look.shirt, pos: [0, 0.27, 0], scale: [1, 1, 0.62] },
+      { geo: G.pectoral, color: look.shirt, pos: [0.075, 0.37, 0.055], scale: [1.05, 0.85, 0.65] },
+      { geo: G.pectoral, color: look.shirt, pos: [-0.075, 0.37, 0.055], scale: [1.05, 0.85, 0.65] },
+      { geo: G.shoulder, color: look.shirt, pos: [0.195, 0.48, 0] },
+      { geo: G.shoulder, color: look.shirt, pos: [-0.195, 0.48, 0] },
+      { geo: G.neck, color: look.skin, pos: [0, 0.565, 0.005] }
+    ];
     if (look.vest) torso.push({ geo: G.torso, color: look.vest, pos: [0, 0.29, 0], scale: [1.06, 0.82, 0.66] });
     add(chest, torso);
-    const headG = new THREE.Group(); headG.position.y = 0.68; chest.add(headG);
-    add(headG, [{ geo: G.head, color: look.skin, scale: [0.92, 1.12, 1] }, ...hairParts(look.hairStyle, look.hair)]);
+    const headG = new THREE.Group(); headG.position.y = 0.685; chest.add(headG);
+    const lipCol = new THREE.Color(look.skin).multiplyScalar(0.75).getStyle();
+    add(headG, [
+      { geo: G.head, color: look.skin, pos: [0, 0.015, 0], scale: [0.92, 1.08, 0.98] },
+      { geo: G.jaw, color: look.skin, pos: [0, -0.042, 0.016], scale: [0.92, 1, 0.88] },
+      { geo: G.ear, color: look.skin, pos: [0.096, 0.0, -0.005], scale: [0.65, 1.15, 0.8] },
+      { geo: G.ear, color: look.skin, pos: [-0.096, 0.0, -0.005], scale: [0.65, 1.15, 0.8] },
+      { geo: G.nose, color: look.skin, pos: [0, -0.002, 0.104], rot: [Math.PI * 0.44, 0, 0] },
+      { geo: G.eye, color: '#f5f5f5', pos: [0.034, 0.018, 0.09], scale: [1.1, 0.78, 0.6] },
+      { geo: G.eye, color: '#f5f5f5', pos: [-0.034, 0.018, 0.09], scale: [1.1, 0.78, 0.6] },
+      { geo: G.pupil, color: '#1b1410', pos: [0.034, 0.018, 0.097] },
+      { geo: G.pupil, color: '#1b1410', pos: [-0.034, 0.018, 0.097] },
+      { geo: G.brow, color: look.hair, pos: [0.035, 0.036, 0.092], rot: [0, 0, -0.08] },
+      { geo: G.brow, color: look.hair, pos: [-0.035, 0.036, 0.092], rot: [0, 0, 0.08] },
+      { geo: G.mouth, color: lipCol, pos: [0, -0.042, 0.09] },
+      ...hairParts(look.hairStyle, look.hair)
+    ]);
     let num = null;
     if (look.number != null) {
       const fg = lum(look.shirt) > 0.6 ? '#111111' : '#ffffff', bg = fg === '#111111' ? '#ffffff' : '#000000';
       const nt = numberTex(look.number, bg, fg); perMatch.push(nt);
       const nm = new THREE.MeshBasicMaterial({ map: nt, transparent: true, depthWrite: false }); perMatch.push(nm);
-      num = new THREE.Mesh(G.num, nm); num.position.set(0, 0.32, -0.125); num.rotation.y = Math.PI; chest.add(num);
+      num = new THREE.Mesh(G.num, nm); num.position.set(0, 0.32, -0.13); num.rotation.y = Math.PI; chest.add(num);
     }
     const limb = (side) => {
-      const sh = new THREE.Group(); sh.position.set(side * 0.215, 0.47, 0); chest.add(sh);
+      const sh = new THREE.Group(); sh.position.set(side * 0.218, 0.47, 0); chest.add(sh);
       add(sh, [{ geo: G.sleeve, color: look.shirt, pos: [0, -0.06, 0], scale: look.sleeveLong ? [0.9, 1.6, 0.9] : [1, 1, 1] }, { geo: G.uArm, color: look.sleeveLong ? look.shirt : look.skin, pos: [0, -0.14, 0] }]);
       const el = new THREE.Group(); el.position.y = -0.28; sh.add(el);
-      add(el, [{ geo: G.fArm, color: look.sleeveLong ? look.shirt : look.skin, pos: [0, -0.12, 0] }, { geo: G.hand, color: look.gloves || look.skin, pos: [0, -0.255, 0.005], scale: [0.85, 1.1, 1] }]);
-      const hp = new THREE.Group(); hp.position.set(side * 0.09, -0.08, 0); hips.add(hp);
-      add(hp, [{ geo: G.shortLeg, color: look.shorts, pos: [0, -0.07, 0] }, { geo: G.thigh, color: look.thighSkin || look.skin, pos: [0, -0.24, 0] }]);
+      add(el, [{ geo: G.fArm, color: look.sleeveLong ? look.shirt : look.skin, pos: [0, -0.12, 0] }, { geo: G.hand, color: look.gloves || look.skin, pos: [0, -0.255, 0.008], scale: [0.85, 1.15, 1] }]);
+      const hp = new THREE.Group(); hp.position.set(side * 0.092, -0.08, 0); hips.add(hp);
+      add(hp, [{ geo: G.shortLeg, color: look.shorts, pos: [0, -0.07, 0] }, { geo: G.thigh, color: look.thighSkin || look.skin, pos: [0, -0.24, 0] }, { geo: G.knee, color: look.thighSkin || look.skin, pos: [0, -0.43, 0.008] }]);
       const kn = new THREE.Group(); kn.position.y = -0.45; hp.add(kn);
-      add(kn, [{ geo: G.shin, color: look.socks, pos: [0, -0.2, 0] }, { geo: G.calf, color: look.socks, pos: [0, -0.1, -0.02], scale: [0.95, 1.6, 0.95] }, { geo: G.boot, color: look.boots, pos: [0, -0.425, 0.045] }]);
+      add(kn, [{ geo: G.shin, color: look.socks, pos: [0, -0.2, 0] }, { geo: G.calf, color: look.socks, pos: [0, -0.1, -0.022], scale: [0.96, 1.62, 0.98] }, { geo: G.boot, color: look.boots, pos: [0, -0.422, 0.045] }, { geo: G.sole, color: '#181818', pos: [0, -0.458, 0.045] }]);
       return { sh, el, hp, kn };
     };
     const Lb = limb(1), Rb = limb(-1);

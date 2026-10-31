@@ -146,40 +146,115 @@ function sampleKeys(keys, t, chan) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// kit / skin shader (one material per player, one shared GPU program)
+// kit / human skin shader (one material per player, one shared GPU program)
 const VERT_PARS = `
 attribute float _region;
 uniform vec4 uK1; uniform mat4 uDQ; uniform vec3 uHideP; uniform vec3 uAfroC;
-varying vec3 vBind; varying float vReg;`;
+varying vec3 vBind; varying vec3 vBindN; varying float vReg;`;
 const VERT_MAIN = `
-vReg = _region; vBind = (uDQ * vec4(position, 1.0)).xyz;
+vReg = _region;
+vBind = (uDQ * vec4(position, 1.0)).xyz;
+vBindN = normalize(mat3(uDQ) * objectNormal);
 { float hs = uK1.z, rg = _region; bool hide = false;
   if (rg > 2.5 && rg < 3.5) hide = !(hs < 0.5 || (hs > 1.5 && hs < 2.5));
   else if (rg > 3.5 && rg < 4.5) hide = !(hs > 0.5 && hs < 1.5);
   else if (rg > 4.5 && rg < 5.5) hide = !(hs > 2.5 && hs < 3.5);
   else if (rg > 5.5) hide = uK1.w < 0.5;
   if (hide) transformed = uHideP;
-  else if (rg > 2.5 && rg < 3.5 && hs > 1.5) transformed = uAfroC + (transformed - uAfroC) * vec3(1.34, 1.3, 1.36);
+  else if (rg > 2.5 && rg < 3.5 && hs > 1.5) transformed = uAfroC + (transformed - uAfroC) * vec3(1.24, 1.22, 1.26);
 }`;
 const FRAG_PARS = `
 uniform vec4 uK1; uniform vec3 uSkin, uHair, uShirt, uC2, uShorts, uSocks, uBoots, uGlove, uNumC, uNumO; uniform vec3 uNum; uniform sampler2D uNumTex;
-varying vec3 vBind; varying float vReg;
+varying vec3 vBind; varying vec3 vBindN; varying float vReg;
+vec3 humanSkin(vec3 base, vec3 p, vec3 n, float det) {
+  // Subsurface scattering warmth in mid/shadow tones + realistic anatomical muscle/face contours
+  vec3 sss = mix(base * vec3(1.12, 0.78, 0.68), base, smoothstep(0.45, 1.05, det));
+  float anatomical = 1.0;
+  // Calf and quad muscle definition on legs
+  if (p.y > 0.46 && p.y < 0.64) {
+    anatomical += 0.08 * sin((p.y - 0.46) * 28.0) * (1.0 - smoothstep(0.02, 0.11, abs(abs(p.x) - 0.085)));
+  }
+  // Forearm & bicep definition
+  if (abs(p.x) > 0.34 && p.y > 1.25) {
+    anatomical += 0.06 * clamp(n.y, -0.5, 0.8);
+  }
+  vec3 col = sss * clamp(det * anatomical, 0.42, 1.45);
+  // Realistic human facial features on front of head (p.y ~ 1.56..1.77, p.z > 0)
+  if (p.y > 1.54 && p.y < 1.78 && p.z > -0.02) {
+    float ax = abs(p.x), y = p.y;
+    // Cheekbone & forehead natural highlight
+    float cheek = exp(-pow((ax - 0.036) / 0.022, 2.0) - pow((y - 1.635) / 0.022, 2.0));
+    float browBone = exp(-pow(ax / 0.048, 2.0) - pow((y - 1.678) / 0.012, 2.0));
+    col += vec3(0.055, 0.04, 0.03) * (cheek * 0.7 + browBone * 0.5) * step(0.03, p.z);
+    // Eye sockets subtle depth
+    float socket = exp(-pow((ax - 0.027) / 0.016, 2.0) - pow((y - 1.660) / 0.011, 2.0)) * step(0.04, p.z);
+    col *= 1.0 - 0.18 * socket;
+    // Eyebrows
+    float browY = 1.677 + (ax - 0.014) * 0.08;
+    float brow = smoothstep(0.0045, 0.0015, abs(y - browY)) * smoothstep(0.011, 0.015, ax) * (1.0 - smoothstep(0.040, 0.046, ax)) * step(0.045, p.z);
+    col = mix(col, uHair * 0.65, brow * 0.88);
+    // Eyes (sclera, iris, pupil, upper lash line)
+    vec2 eyeD = vec2((ax - 0.026) / 0.0115, (y - 1.659) / 0.0058);
+    float eyeR = length(eyeD);
+    if (eyeR < 1.0 && p.z > 0.045) {
+      vec3 sclera = vec3(0.94, 0.93, 0.92);
+      float irisR = length(vec2((ax - 0.0255) / 0.0058, (y - 1.659) / 0.0055));
+      vec3 iris = mix(vec3(0.22, 0.13, 0.07), vec3(0.04, 0.04, 0.05), smoothstep(0.55, 0.25, irisR));
+      // Eye catchlight
+      float glint = smoothstep(0.28, 0.05, length(vec2((ax - 0.024) / 0.004, (y - 1.6605) / 0.004)));
+      iris += vec3(0.75) * glint;
+      vec3 eyeCol = mix(sclera, iris, smoothstep(1.0, 0.72, irisR));
+      float lash = smoothstep(0.75, 1.0, eyeR) * step(1.659, y);
+      eyeCol = mix(eyeCol, uHair * 0.35, lash * 0.75);
+      col = mix(col, eyeCol, smoothstep(1.0, 0.78, eyeR));
+    }
+    // Nose bridge highlight & nostrils
+    float bridge = exp(-pow(ax / 0.007, 2.0)) * smoothstep(1.622, 1.662, y) * (1.0 - smoothstep(1.662, 1.675, y)) * step(0.05, p.z);
+    col += vec3(0.045, 0.035, 0.028) * bridge;
+    float nostril = exp(-pow((ax - 0.0085) / 0.0045, 2.0) - pow((y - 1.620) / 0.0032, 2.0)) * step(0.048, p.z);
+    col *= 1.0 - 0.38 * nostril;
+    // Natural lips & mouth line
+    float lipDist = abs(y - 1.596), lipW = smoothstep(0.022, 0.015, ax) * step(0.045, p.z);
+    vec3 lipTone = mix(base * vec3(0.88, 0.56, 0.54), base * vec3(0.76, 0.52, 0.50), 0.5);
+    col = mix(col, lipTone, smoothstep(0.0065, 0.002, lipDist) * lipW * 0.72);
+    col *= 1.0 - 0.28 * smoothstep(0.0018, 0.0004, abs(y - 1.5965)) * lipW;
+    // Subtle jawline & stubble/beard shadow
+    if (uK1.w > 0.5 && y < 1.625 && p.z > 0.01) {
+      float jaw = smoothstep(1.625, 1.595, y) * smoothstep(0.0, 0.035, p.z);
+      float mustache = smoothstep(0.0055, 0.0015, abs(y - 1.606)) * smoothstep(0.022, 0.012, ax);
+      col = mix(col, uHair * 0.72, clamp(jaw * 0.45 + mustache * 0.55, 0.0, 0.75));
+    }
+  }
+  return col;
+}
 vec3 kitCol(vec3 p, float reg, float det) {
-  vec3 skin = uSkin * det;
-  if (reg > 0.5) { if (reg < 1.5) return uHair * 0.8 * (0.6 + 0.4 * det); if (reg < 2.5) return vec3(0.9) * det; return uHair * (0.7 + 0.45 * det); }
-  float ax = abs(p.x), y = p.y, kd = mix(1.0, det, 0.12), mode = uK1.y;
+  vec3 skin = humanSkin(uSkin, p, vBindN, det);
+  if (reg > 0.5) {
+    float strand = 0.92 + 0.16 * sin(p.x * 190.0 + p.z * 170.0 + p.y * 90.0);
+    if (reg < 1.5) return uHair * 0.82 * (0.65 + 0.38 * det) * strand;
+    if (reg < 2.5) return vec3(0.95) * det;
+    return uHair * (0.68 + 0.42 * det) * strand;
+  }
+  float ax = abs(p.x), y = p.y, mode = uK1.y;
+  // Realistic jersey fabric micro-folds & shading
+  float fold = 0.96 + 0.045 * sin(p.y * 55.0 + p.x * 28.0) + 0.03 * cos(p.x * 48.0 - p.z * 35.0);
+  float kd = mix(1.0, det, 0.26) * fold;
   vec3 sleeveC = mode > 1.5 ? uShorts : uShirt;
   if (ax > 0.205 && y > 1.30) {
     if (ax > 0.70) return mode > 0.5 && mode < 1.5 ? uGlove * kd : skin;
     float sl = mode > 0.5 ? 0.69 : 0.37;
-    if (ax < sl) return (ax > sl - 0.025 && mode < 1.5 ? uC2 : sleeveC) * kd;
+    if (ax < sl) {
+      // Captain's armband on left sleeve for outfield captain
+      if (mode < 0.5 && p.x > 0.27 && p.x < 0.325) return vec3(0.98, 0.78, 0.05) * kd;
+      return (ax > sl - 0.025 && mode < 1.5 ? uC2 : sleeveC) * kd;
+    }
     return skin;
   }
   float top = ax < 0.075 ? (p.z > 0.0 ? 1.455 : 1.5) : (ax < 0.13 ? 1.52 : 1.58);
   if (y > top) return skin;
   if (y > 0.965) {
     vec3 c = uShirt; float pat = uK1.x;
-    if (y > top - 0.022 && mode < 1.5) return uC2 * kd;
+    if (y > top - 0.024 && mode < 1.5) return uC2 * kd;
     if (pat > 0.5 && pat < 1.5) c = mix(c, uC2, step(0.5, fract(p.x / 0.1 + 0.25)));
     else if (pat < 2.5 && pat > 1.5) c = mix(c, uC2, step(0.5, fract((y - 0.965) / 0.11)));
     else if (pat < 3.5 && pat > 2.5) c = mix(c, uC2, step(0.0, p.x));
@@ -187,6 +262,11 @@ vec3 kitCol(vec3 p, float reg, float det) {
     else if (pat < 5.5 && pat > 4.5) c = mix(c, uC2, step(0.82, fract(p.x / 0.045)));
     else if (pat < 6.5 && pat > 5.5) { vec2 cc = floor(vec2(p.x / 0.07, (y - 0.965) / 0.07)); float k = mod(cc.x + cc.y, 3.0); c = k < 0.5 ? uC2 : (k < 1.5 ? vec3(0.95, 0.68, 0.03) : uShirt); float ln = step(0.86, fract((y - 0.965) / 0.07)); c = mix(c, vec3(0.02), ln); }
     else if (pat > 6.5) { float yy = mod(y - 1.08, 0.1); c = mix(c, vec3(0.6, 0.62, 0.6), step(yy, 0.022) * step(y, 1.3)); }
+    // Shoulder three-stripe athletic trim
+    if (mode < 1.5 && y > 1.44 && ax > 0.11 && ax < 0.20) {
+      float st = step(0.62, fract(ax * 55.0));
+      c = mix(c, uC2, st * 0.7);
+    }
     if (uNum.z > 0.5 && p.z < -0.03 && ax < 0.15 && y > 1.07 && y < 1.37) {
       vec2 uv = vec2(0.5 - p.x / 0.3, (y - 1.07) / 0.3); vec4 n = texture2D(uNumTex, (uNum.xy + uv) / 10.0);
       c = mix(c, uNumO, n.g); c = mix(c, uNumC, n.r);
@@ -194,14 +274,24 @@ vec3 kitCol(vec3 p, float reg, float det) {
     if (mode < 1.5 && p.z > 0.05 && length(vec2(p.x - 0.085, y - 1.33)) < 0.03) c = length(vec2(p.x - 0.085, y - 1.33)) < 0.022 ? uC2 : vec3(0.95, 0.75, 0.1);
     return c * kd;
   }
-  if (y > 0.62) { if (mode < 1.5 && (y < 0.64 || (ax > 0.17 && fract(y * 0.0) < 1.0 && abs(p.z) < 0.02))) return uC2 * kd; return uShorts * kd; }
-  if (y > 0.50) return mode > 1.5 ? uShorts * kd : skin;
-  if (y > 0.115) return (y > 0.445 && y < 0.475 && mode < 1.5 ? uC2 : uSocks) * kd;
-  return (y < 0.022 ? uBoots * 0.55 + vec3(0.06) : uBoots) * kd;
+  if (y > 0.62) {
+    if (mode < 1.5 && (y < 0.642 || (ax > 0.165 && abs(p.z) < 0.025))) return uC2 * kd;
+    return uShorts * kd;
+  }
+  if (y > 0.495) return mode > 1.5 ? uShorts * kd : skin;
+  if (y > 0.115) {
+    // Sock fold-over cuff + ankle tape
+    if (y > 0.44 && y < 0.478 && mode < 1.5) return uC2 * kd;
+    if (y < 0.155 && mode < 1.5) return vec3(0.94, 0.94, 0.96) * kd;
+    return uSocks * kd;
+  }
+  // Sculpted football boots with soleplate & heel counter
+  if (y < 0.024) return mix(vec3(0.12), uBoots * 0.45, step(0.012, y)) * kd;
+  return (p.z > 0.04 && y > 0.045 && y < 0.075 ? mix(uBoots, vec3(0.95), 0.35) : uBoots) * kd;
 }`;
 const FRAG_MAP = `
 { vec4 texel = texture2D(map, vMapUv); float lu = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-  float det = clamp(lu / 0.2284, 0.3, 1.7); diffuseColor.rgb *= kitCol(vBind, vReg, det); }`;
+  float det = clamp(lu / 0.2284, 0.38, 1.62); diffuseColor.rgb *= kitCol(vBind, vReg, det); }`;
 
 let numAtlas = null;
 function numberAtlas() {
@@ -231,19 +321,23 @@ function makeMaterials(sys, look) {
     U.uNumC.value = col(light ? '#111111' : '#ffffff'); U.uNumO.value = col(light ? '#ffffff' : '#111111');
     if (look.c2 && Math.abs(lumHex(look.c2) - lumHex(look.shirt)) > 0.35 && PAT[look.pattern] === 0) U.uNumC.value = col(look.c2);
   }
-  const mat = new THREE.MeshLambertMaterial({ map: sys.skinTex });
+  const mat = new THREE.MeshPhongMaterial({
+    map: sys.skinTex,
+    specular: new THREE.Color('#26221e'),
+    shininess: 22,
+  });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>' + VERT_PARS).replace('#include <begin_vertex>', '#include <begin_vertex>' + VERT_MAIN);
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>' + FRAG_PARS).replace('#include <map_fragment>', FRAG_MAP);
   };
-  mat.customProgramCacheKey = () => 'kk_player_v1';
+  mat.customProgramCacheKey = () => 'kk_player_human_v2';
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depth.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float _region; uniform vec4 uK1; uniform vec3 uHideP; uniform vec3 uAfroC; uniform mat4 uDQ; varying vec3 vBind; varying float vReg;').replace('#include <begin_vertex>', '#include <begin_vertex>' + VERT_MAIN);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float _region; uniform vec4 uK1; uniform vec3 uHideP; uniform vec3 uAfroC; uniform mat4 uDQ; varying vec3 vBind; varying vec3 vBindN; varying float vReg;').replace('#include <begin_vertex>', '#include <begin_vertex>' + VERT_MAIN);
   };
-  depth.customProgramCacheKey = () => 'kk_player_depth_v1';
+  depth.customProgramCacheKey = () => 'kk_player_depth_v2';
   return { mat, depth, U };
 }
 
@@ -319,7 +413,7 @@ class Rig {
     this.sys = sys; this.look = look;
     this.root = new THREE.Group();
     this.model = SkeletonUtils.clone(sys.A.gltf.scene); this.root.add(this.model);
-    const s = (look.size || 1) * sys.scale; this.sc = s; this.model.scale.set(s * 0.95, s, s * 0.97);
+    const s = (look.size || 1) * sys.scale; this.sc = s; this.model.scale.set(s * 1.0, s * 1.01, s * 0.99);
     const M = makeMaterials(sys, look); this.M = M;
     this.meshes = [];
     this.model.traverse((o) => {
@@ -336,6 +430,7 @@ class Rig {
     this.phase = Math.random(); this.idleT = Math.random() * 2.5; this.yaw = 0; this.yawRate = 0; this.prevSpd = 0; this.accF = 0;
     this.shots = []; this.stanceW = {}; this.stance = null; this.upper = null; this.upperW = 0; this.upperT = 0; this.ovW = {};
     this.tw = 0; this.lean = 0; this.pitch = 0; this.acc = 0; this.skip = 0; this.left = !!look.leftFoot;
+    this.headYaw = 0; this.headPitch = 0;
     if (opts_blob(sys)) { this.blob = new THREE.Mesh(sys.blobGeo, sys.blobMat); this.blob.renderOrder = 1; this.blob.scale.setScalar(1.15); sys.scene.add(this.blob); }
     sys.scene.add(this.root);
   }
@@ -425,6 +520,26 @@ class Rig {
     if (Math.abs(this.tw) > 0.01 && lw > 0) {
       this.rotChar('P', 0, this.tw * lw, 0); this.rotChar('S1', 0, -this.tw * 0.4 * lw, 0); this.rotChar('S2', 0, -this.tw * 0.35 * lw, 0); this.rotChar('S3', 0, -this.tw * 0.25 * lw, 0);
     }
+    // Natural human head & neck tracking toward the ball + chest breathing
+    if (opt.lookX != null && locoW > 0.2) {
+      const bdx = opt.lookX - wx, bdz = opt.lookZ - wz, bd = Math.hypot(bdx, bdz);
+      let tHY = 0, tHP = 0;
+      if (bd > 0.35 && bd < 32) {
+        const bAng = angDiff(Math.atan2(bdx, bdz), this.yaw);
+        if (Math.abs(bAng) < 1.35) {
+          tHY = clamp(bAng * 0.65, -0.72, 0.72);
+          const bH = (opt.lookY || 0.22) - 1.58 * sc;
+          tHP = clamp(-Math.atan2(bH, Math.max(1.2, bd)) * 0.55, -0.35, 0.42);
+        }
+      }
+      this.headYaw += (tHY - this.headYaw) * Math.min(1, dt * 7);
+      this.headPitch += (tHP - this.headPitch) * Math.min(1, dt * 7);
+      const hw = locoW * (1 - S);
+      this.rotChar('N', this.headPitch * 0.4 * hw, this.headYaw * 0.4 * hw, 0);
+      this.rotChar('H', this.headPitch * 0.6 * hw, this.headYaw * 0.6 * hw, 0);
+    }
+    const breath = Math.sin(this.idleT * 2.6) * 0.025 * locoW * wI;
+    if (Math.abs(breath) > 0.002) this.rotChar('S2', breath, 0, 0);
     const leanT = clamp(-this.yawRate * spd * 0.028, -0.38, 0.38) * (back ? 0.4 : 1), pitchT = clamp(this.acc * 0.025, -0.12, 0.2) * (back ? -0.5 : 1);
     this.lean += (leanT - this.lean) * Math.min(1, dt * 6); this.pitch += (pitchT - this.pitch) * Math.min(1, dt * 5);
     this.model.rotation.set(this.pitch * lw, 0, this.lean * lw);
@@ -510,7 +625,7 @@ function brain(rg, p, m, dt) {
     }
   } else if (m.state === 'restart' || (m.flashT > 0 && m.state !== 'play')) rg.setUpper('Ref_Point');
   B.kc = p.kickCd || 0; B.tc = p.tackleCd || 0; B.lunge = p.lunge || 0; B.stun = p.stun || 0; B.lk = b.lastKicker; B.own = b.owner; B.st = m.state;
-  return { yaw, idle };
+  return { yaw, idle, lookX: b.x - HL_, lookZ: b.y - CY_, lookY: 0.22 + Math.max(0, b.z || 0) };
 }
 function updateAll(sys, m, dt, camera, entries) {
   sys.t = (sys.t || 0) + dt; sys.ballOv = null;

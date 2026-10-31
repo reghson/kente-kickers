@@ -1,0 +1,6 @@
+{
+  "name": "Kente Kickers",
+  "description": "Build your football club, manage your squad, and play real-time 3D matches across Ghana and European leagues.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

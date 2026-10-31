@@ -90,7 +90,7 @@
       <label class="lbl">Shorts</label><div class="swatches">${sw('shorts', d.kit.shorts)}</div>
     </div>
     <div class="card"><div class="row between"><h3>4. Starting squad (${d.players.length})</h3><button class="btn sm alt" id="f-reroll">🎲 New squad</button></div>
-      <ul class="plist">${d.players.map(p => `<li><span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>Age ${p.age} · PAC ${p.stats.pac} SHO ${p.stats.sho} PAS ${p.stats.pas} DEF ${p.stats.def}</small></div><span class="rt">${p.rating}</span></li>`).join('')}</ul>
+      <ul class="plist">${d.players.map(p => `<li>${KK.meta.faceSVG(p, 36, p.pos === 'GK' ? '#fb8c00' : d.kit.shirt)}<span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>Age ${p.age} · PAC ${p.stats.pac} SHO ${p.stats.sho} PAS ${p.stats.pas} DEF ${p.stats.def}</small></div><span class="rt">${p.rating}</span></li>`).join('')}</ul>
     </div>
     <button class="btn block" id="f-start" style="margin:14px 0 30px">START CAREER ▶</button>`;
   }
@@ -150,40 +150,43 @@
   function squadHTML() {
     const slots = KK.FORMATIONS[save.formation];
     const xi = save.lineup.map(id => save.players.find(p => p.id === id));
+    const shirtHex = pos => pos === 'GK' ? '#fb8c00' : save.team.kit.shirt;
     const dots = slots.map((s, i) => {
       const p = xi[i]; const bad = p && p.pos !== s[0];
-      return `<div class="slot ${selSlot === i ? 'sel' : ''} ${bad ? 'bad' : ''}" data-slot="${i}" data-drag="s${i}" style="left:${s[2] * 100}%;top:${(1 - s[1] / 0.72) * 88 + 6}%"><div class="dot" style="background:${s[0] === 'GK' ? '#fb8c00' : save.team.kit.shirt};color:${KK.colorDist(save.team.kit.shirt, '#ffffff') < 150 && s[0] !== 'GK' ? '#111' : '#fff'}">${p ? p.rating : '-'}</div><span>${p ? esc(surname(p.name)) : '?'}</span>${p ? fitBar(p) : ''}</div>`;
+      return `<div class="slot ${selSlot === i ? 'sel' : ''} ${bad ? 'bad' : ''}" data-slot="${i}" data-drag="s${i}" style="left:${s[2] * 100}%;top:${(1 - s[1] / 0.72) * 88 + 6}%"><div class="dot" style="background:${shirtHex(s[0])};color:${KK.colorDist(save.team.kit.shirt, '#ffffff') < 150 && s[0] !== 'GK' ? '#111' : '#fff'}">${p ? `${KK.meta.faceSVG(p, 34, shirtHex(s[0]))}<em class="slot-ovr">${p.rating}</em>` : '-'}</div><span>${p ? esc(surname(p.name)) : '?'}</span>${p ? fitBar(p) : ''}</div>`;
     }).join('');
     const inXI = new Set(save.lineup), order = { GK: 0, DF: 1, MF: 2, FW: 3 };
     const bench = save.players.filter(p => !inXI.has(p.id)).sort((a, b) => order[a.pos] - order[b.pos] || b.rating - a.rating);
-    return `<div class="card"><div class="row between"><h3>Formation</h3><button class="btn sm alt" id="s-auto">Auto pick</button></div>
+    return `<div class="card"><div class="row between"><h3>Formation · Team Management</h3><button class="btn sm alt" id="s-auto">Auto pick</button></div>
       <div class="chips">${Object.keys(KK.FORMATIONS).map(f => `<button class="chip ${save.formation === f ? 'on' : ''}" data-form="${f}">${f}</button>`).join('')}</div>
-      <p style="font-size:13px;color:var(--mute);margin:8px 0">${selSlot === null ? 'Drag a shirt onto another shirt or onto a substitute to swap them. Or tap a shirt, then tap a player.' : 'Now tap a shirt or a substitute to swap.'} Team OVR <b style="color:var(--gold)">${KK.myRating(save)}</b></p>
+      <p style="font-size:13px;color:var(--mute);margin:8px 0">${selSlot === null ? 'Drag a player onto another slot or substitute to swap them. Or tap a slot, then tap a player.' : 'Now tap a slot or a substitute to swap.'} Team OVR <b style="color:var(--gold)">${KK.myRating(save)}</b></p>
       <div class="teamwrap"><div class="mini-pitch" id="minipitch">${dots}</div>
-      <div class="benchbox"><h4>SUBSTITUTES (${bench.length})</h4><div class="bench">${bench.map(p => `<div class="bp" data-pid="${p.id}" data-drag="p${p.id}"><span class="pos ${p.pos}">${p.pos}</span><b>${esc(surname(p.name))}</b><span class="rt">${p.rating}</span>${fitBar(p)}</div>`).join('')}</div></div></div></div>
-    <div class="card"><h3>Starting XI</h3><ul class="plist">${xi.map((p, i) => p ? `<li class="xi" data-pid="${p.id}"><span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>${slots[i][0]} slot · ${fitBar(p)} ${p.fit == null ? 100 : p.fit}%</small></div>${KK.meta.starsHTML(p.rating)}<span class="rt">${p.rating}</span></li>` : '').join('')}</ul></div>`;
+      <div class="benchbox"><h4>SUBSTITUTES (${bench.length})</h4><div class="bench">${bench.map(p => `<div class="bp" data-pid="${p.id}" data-drag="p${p.id}">${KK.meta.faceSVG(p, 28, shirtHex(p.pos))}<span class="pos ${p.pos}">${p.pos}</span><b>${esc(surname(p.name))}</b><span class="rt">${p.rating}</span>${fitBar(p)}</div>`).join('')}</div></div></div></div>
+    <div class="card"><h3>Starting XI</h3><ul class="plist">${xi.map((p, i) => p ? `<li class="xi" data-pid="${p.id}">${KK.meta.faceSVG(p, 38, shirtHex(p.pos))}<span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>${slots[i][0]} slot · ${fitBar(p)} ${p.fit == null ? 100 : p.fit}%</small></div>${KK.meta.starsHTML(p.rating)}<span class="rt">${p.rating}</span></li>` : '').join('')}</ul></div>`;
   }
   function trainingHTML() {
     const order = { GK: 0, DF: 1, MF: 2, FW: 3 }, inXI = new Set(save.lineup);
     const list = save.players.slice().sort((a, b) => (inXI.has(b.id) - inXI.has(a.id)) || order[a.pos] - order[b.pos] || b.rating - a.rating);
     const tired = save.players.filter(p => (p.fit == null ? 100 : p.fit) < 100).length;
+    const shirtHex = pos => pos === 'GK' ? '#fb8c00' : save.team.kit.shirt;
     return `<div class="card"><div class="row between"><div><h3>🩺 Physio room</h3><small style="color:var(--mute)">${tired} tired player${tired === 1 ? '' : 's'}. Heal everyone to 100% stamina.</small></div><button class="btn sm" id="t-physio" ${save.gold < 2 || !tired ? 'disabled' : ''}>Heal all · 2${GK}</button></div></div>
-    <div class="card"><h3>🏋️ Training ground (${save.players.length})</h3><p style="font-size:13px;color:var(--mute);margin:4px 0">Train a player +1 OVR with coins. Starters lose stamina each match and recover while resting. Tap a player to see their card.</p><ul class="plist">${list.map(p => {
+    <div class="card"><h3>🏋️ Player Development (${save.players.length})</h3><p style="font-size:13px;color:var(--mute);margin:4px 0">Coach a player +1 OVR with coins. Starters lose stamina each match and recover while resting. Tap a player to inspect their full DLS card.</p><ul class="plist">${list.map(p => {
       const slot = save.lineup.indexOf(p.id), cost = KK.trainCost(p);
-      return `<li class="${slot >= 0 ? 'xi' : ''}" data-pid="${p.id}"><span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>${slot >= 0 ? 'XI' : 'SUB'} · Age ${p.age} · ${fitBar(p)} ${p.fit == null ? 100 : p.fit}%${p.goals ? ' · ⚽' + p.goals : ''}</small></div><span class="rt">${p.rating}</span>
-      <div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm" data-train="${p.id}" ${p.rating >= 99 || save.coins < cost ? 'disabled' : ''}>Train +1<br><small>🪙${cost}</small></button>${slot < 0 ? `<button class="btn sm red" data-sell="${p.id}">Sell 🪙${Math.round(KK.playerValue(p) / 2)}</button>` : ''}</div></li>`;
+      return `<li class="${slot >= 0 ? 'xi' : ''}" data-pid="${p.id}">${KK.meta.faceSVG(p, 38, shirtHex(p.pos))}<span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>${slot >= 0 ? 'XI' : 'SUB'} · Age ${p.age} · ${fitBar(p)} ${p.fit == null ? 100 : p.fit}%${p.goals ? ' · ⚽' + p.goals : ''}</small></div><span class="rt">${p.rating}</span>
+      <div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm" data-train="${p.id}" ${p.rating >= 99 || save.coins < cost ? 'disabled' : ''}>Coach +1<br><small>🪙${cost}</small></button>${slot < 0 ? `<button class="btn sm red" data-sell="${p.id}">Release 🪙${Math.round(KK.playerValue(p) / 2)}</button>` : ''}</div></li>`;
     }).join('')}</ul></div>`;
   }
   function cardModal(p) {
     const cost = KK.trainCost(p), mine = save.players.includes(p);
-    modal(`${KK.meta.cardHTML(p)}${mine ? `<div class="row" style="margin-top:10px"><button class="btn alt grow" data-close>Close</button><button class="btn grow" data-train="${p.id}" data-incard="1" ${p.rating >= 99 || save.coins < cost ? 'disabled' : ''}>Train +1 · 🪙${cost}</button></div>` : '<button class="btn alt block" data-close style="margin-top:10px">Close</button>'}`, 'cardmodal');
+    const shirt = p.pos === 'GK' ? '#fb8c00' : (mine && save.team && save.team.kit ? save.team.kit.shirt : '#1e429f');
+    modal(`${KK.meta.cardHTML(p, { shirt })}${mine ? `<div class="row" style="margin-top:10px"><button class="btn alt grow" data-close>Close</button><button class="btn grow" data-train="${p.id}" data-incard="1" ${p.rating >= 99 || save.coins < cost ? 'disabled' : ''}>Coach +1 · 🪙${cost}</button></div>` : '<button class="btn alt block" data-close style="margin-top:10px">Close</button>'}`, 'cardmodal');
   }
 
   // ---------- market ----------
   function marketHTML() {
-    return `<div class="card"><div class="row between"><h3>Transfer market</h3><div class="row" style="gap:6px"><button class="btn sm alt" id="mk-refresh">New list 🪙100</button><button class="btn sm alt" id="mk-goldref" ${save.gold < 1 ? 'disabled' : ''}>New list 1${GK}</button></div></div>
-    <p style="font-size:13px;color:var(--mute);margin:4px 0">Buy players with coins you earn from matches. The list changes every 4 rounds. Squad limit 24 (you have ${save.players.length}).</p>
-    <ul class="plist">${save.market.map(p => `<li data-pid="${p.id}"><span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>Age ${p.age} · PAC ${p.stats.pac} SHO ${p.stats.sho} PAS ${p.stats.pas} DEF ${p.stats.def}</small></div><span class="rt">${p.rating}</span><button class="btn sm" data-buy="${p.id}" ${save.coins < p.price || save.players.length >= 24 ? 'disabled' : ''}>Buy<br><small>🪙${p.price.toLocaleString()}</small></button></li>`).join('') || '<li>No players listed.</li>'}</ul></div>`;
+    return `<div class="card"><div class="row between"><h3>⚡ Live Transfers</h3><div class="row" style="gap:6px"><button class="btn sm alt" id="mk-refresh">Scout list 🪙100</button><button class="btn sm alt" id="mk-goldref" ${save.gold < 1 ? 'disabled' : ''}>Agent 1${GK}</button></div></div>
+    <p style="font-size:13px;color:var(--mute);margin:4px 0">Sign players on the live transfer market with coins earned from matches. Refreshes every 4 rounds. Squad limit 24 (you have ${save.players.length}).</p>
+    <ul class="plist">${save.market.map(p => `<li data-pid="${p.id}">${KK.meta.faceSVG(p, 40, p.pos === 'GK' ? '#fb8c00' : '#1e429f')}<span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b><small>Age ${p.age} · SPE ${p.stats.pac} SHO ${p.stats.sho} PAS ${p.stats.pas} TAC ${p.stats.def}</small></div><span class="rt">${p.rating}</span><button class="btn sm" data-buy="${p.id}" ${save.coins < p.price || save.players.length >= 24 ? 'disabled' : ''}>Sign<br><small>🪙${p.price.toLocaleString()}</small></button></li>`).join('') || '<li>No players listed.</li>'}</ul></div>`;
   }
 
   // ---------- league ----------
@@ -502,7 +505,8 @@
       const mo = res.motm, ps = mo.ps || {}, mineP = save && save.players.find(p => p.id === mo.id);
       const side = mo.t === 0 ? ctlSide : 1 - ctlSide, club = side === 0 ? A : B;
       const mine = (res.ratings || []).filter(x => x.t === 0).sort((x, y) => y.r - x.r).slice(0, 11);
-      pages.push(`<small class="pg">MAN OF THE MATCH</small><div class="motm"><div class="mo-l">${mineP ? KK.meta.cardHTML(mineP) : `<div class="mo-op">${crestOf(club, 90)}<h3>${esc(mo.name)}</h3><span class="pos ${mo.pos}">${mo.pos}</span></div>`}</div>
+      const moShirt = mo.pos === 'GK' ? '#fb8c00' : (club.c1 || (save && save.team ? save.team.kit.shirt : '#1e429f'));
+      pages.push(`<small class="pg">MAN OF THE MATCH</small><div class="motm"><div class="mo-l">${mineP ? KK.meta.cardHTML(mineP, { shirt: moShirt }) : `<div class="mo-op">${KK.meta.faceSVG(mo, 78, moShirt)}<div style="margin-top:6px">${crestOf(club, 36)}</div><h3>${esc(mo.name)}</h3><span class="pos ${mo.pos}">${mo.pos}</span></div>`}</div>
         <div class="mo-r"><div class="mo-star">★</div><h2>${esc(mo.name)}</h2><div style="color:var(--mute)">${esc(club.name)}</div><div class="mo-rt">${mo.r.toFixed(1)}</div>
         <div class="mo-st"><span>⚽ <b>${ps.g || 0}</b> goals</span><span>🅰️ <b>${ps.as || 0}</b> assists</span><span>🎯 <b>${ps.sh || 0}</b> shots</span><span>🔁 <b>${ps.pa || 0}</b> passes</span><span>🛡️ <b>${ps.tk || 0}</b> tackles</span><span>🧤 <b>${ps.sv || 0}</b> saves</span></div>
         <h4 style="margin:10px 0 4px">YOUR RATINGS</h4><div class="rtgrid">${mine.map(x => `<span class="${x.id === mo.id ? 'best' : ''}"><i class="pos ${x.pos}">${x.pos}</i>${esc(surname(x.name))}<b>${x.r.toFixed(1)}</b></span>`).join('')}</div></div></div>`);
@@ -592,8 +596,8 @@
     const H = R.homeIs0 ? R.T0 : R.T1, Aw = R.homeIs0 ? R.T1 : R.T0;
     const xiOf = t => t.id === 'ME' ? KK.lineupPlayers(save) : KK.oppSquad(t);
     const ovr = t => t.id === 'ME' ? KK.myRating(save) : t.rating;
-    const col = t => { const xi = xiOf(t), me = t.id === 'ME'; return `<div class="pm-col"><div class="pm-team">${crestOf(t, 46)}<div><b>${esc(t.name)}</b><small>OVR ${ovr(t)} · ${me ? save.formation : (t.form || '4-4-2')}</small></div></div><div class="pm-ovr"><i style="width:${Math.max(8, (ovr(t) - 30) / 65 * 100)}%"></i></div>
-      <div class="pm-list">${xi.map(p => `<div><span class="pos ${p.pos}">${p.pos}</span><span class="nm">${esc(surname(p.name))}</span>${me ? fitBar(p) : ''}<span class="rt">${p.rating}</span></div>`).join('')}</div></div>`; };
+    const col = t => { const xi = xiOf(t), me = t.id === 'ME', sh = me ? save.team.kit.shirt : (t.c1 || '#1e429f'); return `<div class="pm-col"><div class="pm-team">${crestOf(t, 46)}<div><b>${esc(t.name)}</b><small>OVR ${ovr(t)} · ${me ? save.formation : (t.form || '4-4-2')}</small></div></div><div class="pm-ovr"><i style="width:${Math.max(8, (ovr(t) - 30) / 65 * 100)}%"></i></div>
+      <div class="pm-list">${xi.map(p => `<div>${KK.meta.faceSVG(p, 20, p.pos === 'GK' ? '#fb8c00' : sh)}<span class="pos ${p.pos}">${p.pos}</span><span class="nm">${esc(surname(p.name))}</span>${me ? fitBar(p) : ''}<span class="rt">${p.rating}</span></div>`).join('')}</div></div>`; };
     const homeSt = R.T0.id === 'ME' ? R.homeIs0 : R.T1.id === 'ME' ? !R.homeIs0 : false;
     const ground = homeSt ? KK.STADIUM[save.stadium].name : 'Away ground';
     modal(`<small class="pg">MATCH DAY · ${esc(R.label)}</small>
@@ -723,10 +727,11 @@
   }
   function subsMenu(selOn) {
     const ov = $('#m-overlay'); const on = match.ents.filter(e => e.t === 0);
+    const sh = save && save.team && save.team.kit ? save.team.kit.shirt : '#1e429f';
     ov.innerHTML = `<div class="modal-card" style="text-align:left"><h3>Substitutions (${3 - match.subsUsed} left)</h3>
       <p style="font-size:13px;color:var(--mute)">${selOn == null ? '1. Tap the player coming OFF.' : '2. Tap the player coming ON.'}</p>
-      <ul class="plist">${selOn == null ? on.map(e => `<li data-off="${e.i}"><span class="pos ${e.pos}">${e.pos}</span><div class="pname"><b>${esc(e.sp.name)}</b></div><span class="rt">${e.sp.rating}</span></li>`).join('') :
-        match.bench.map(p => `<li data-on="${p.id}" data-slot2="${selOn}"><span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b></div><span class="rt">${p.rating}</span></li>`).join('') || '<li>No subs on the bench</li>'}</ul>
+      <ul class="plist">${selOn == null ? on.map(e => `<li data-off="${e.i}">${KK.meta.faceSVG(e.sp, 34, e.pos === 'GK' ? '#fb8c00' : sh)}<span class="pos ${e.pos}">${e.pos}</span><div class="pname"><b>${esc(e.sp.name)}</b></div><span class="rt">${e.sp.rating}</span></li>`).join('') :
+        match.bench.map(p => `<li data-on="${p.id}" data-slot2="${selOn}">${KK.meta.faceSVG(p, 34, p.pos === 'GK' ? '#fb8c00' : sh)}<span class="pos ${p.pos}">${p.pos}</span><div class="pname"><b>${esc(p.name)}</b></div><span class="rt">${p.rating}</span></li>`).join('') || '<li>No subs on the bench</li>'}</ul>
       <button class="btn alt block" id="p-back" style="margin-top:10px">Back</button></div>`;
   }
   $('#m-overlay').addEventListener('click', e => {
