@@ -593,6 +593,10 @@
       b.vx = b.vy = b.vz = 0; b.owner = null; b.x = clamp(x, 0.3, L - 0.3); b.y = clamp(y, 0.3, W - 0.3); b.z = 0; b.offside = null; b.passTo = null; b.shot = false;
       this.after = () => {
         let p = gk ? this.ents.find(e => e.t === t && e.pos === 'GK') : null;
+        if (!p && t === 0 && this.cfg.roles) {
+          const rId = label === 'CORNER' ? this.cfg.roles.ck : label === 'FREE KICK' ? this.cfg.roles.fk : null;
+          if (rId) p = this.ents.find(e => e.t === 0 && e.sp && e.sp.id === rId && e.pos !== 'GK');
+        }
         if (!p) p = taker && !taker.off && taker.pos !== 'GK' ? taker : this.nearestTo(t, b.x, b.y, true);
         p.x = b.x - this.teams[t].dir * 0.5; p.y = b.y; p.vx = p.vy = 0; p.stun = 0;
         // push opponents away

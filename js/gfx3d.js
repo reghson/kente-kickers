@@ -165,18 +165,18 @@ export function create(canvas, opts = {}) {
     const roof = new THREE.Mesh(keep(new THREE.BoxGeometry(len, 0.4, 12)), roofMat); roof.position.set(0, H1 + 4.5, -D + 4); roof.rotation.x = -0.12; grp.add(roof);
     standGrp.add(grp); return grp;
   }
-  // stadium level 0..4 → bigger stands (my club's stadium upgrades)
+  // stadium level 0..7 → bigger stands (my club's DLS stadium upgrades)
   function buildStands(lv) {
     if (lv === stadiumLevel) return; stadiumLevel = lv;
     while (standGrp.children.length) standGrp.remove(standGrp.children[0]);
-    const H = 8 + lv * 3, D = 10 + lv * 3;
-    stand(0, -(CY + 9), L + 20, 0, H, D); nearStand = stand(0, CY + 9, L + 20, Math.PI, H, D);
-    stand(-(HL + 10), 0, W + 8, Math.PI / 2, H * 0.8, D * 0.8); stand(HL + 10, 0, W + 8, -Math.PI / 2, H * 0.8, D * 0.8);
+    const H = 7 + lv * 2.2, D = 9 + lv * 2.2;
+    stand(0, -(CY + 9), L + 22, 0, H, D); nearStand = stand(0, CY + 9, L + 22, Math.PI, H, D);
+    stand(-(HL + 10), 0, W + 10, Math.PI / 2, H * 0.85, D * 0.85); stand(HL + 10, 0, W + 10, -Math.PI / 2, H * 0.85, D * 0.85);
   }
   buildStands(2);
 
   // ---------- animated LED advertising boards (DLS broadcast look) ----------
-  const SPONSORS = ['DREAM LEAGUE', 'KENTE KICKERS', 'LIVE MATCHDAY'];
+  const SPONSORS = ['DREAM LEAGUE SOCCER', 'GLOBAL CHALLENGE CUP', 'LIVE BROADCAST'];
   const ledTex = (pal) => keep(canvasTex(1536, 64, (g, w, h) => {
     SPONSORS.forEach((txt, i) => {
       const x0 = i * 512, gr = g.createLinearGradient(x0, 0, x0 + 512, h);
@@ -630,7 +630,7 @@ export function create(canvas, opts = {}) {
       }
       Object.assign(ref, { x: HL - 8, y: CY + 10, vx: 0, vy: 0 }); if (refFig) refFig.yaw = 0;
       buildExtras(7 + (m.cfg.seed || 0));
-      buildStands(clamp(m.cfg.stadiumLevel == null ? 2 : m.cfg.stadiumLevel, 0, 4));
+      buildStands(clamp(m.cfg.stadiumLevel == null ? 2 : m.cfg.stadiumLevel, 0, 7));
       this.weather = m.cfg.weather || 'clear'; setWeather(this.weather);
       this.resize();
     },
@@ -665,7 +665,7 @@ export function create(canvas, opts = {}) {
       renderer.render(scene, camera);
     },
     skinned() { return !!(psys && rigs.size); },
-    setStadium(lv) { buildStands(clamp(lv, 0, 4)); },
+    setStadium(lv) { buildStands(clamp(lv, 0, 7)); },
     project(x, y, h) {
       proj.set(x - HL, h * (psys ? psys.scale : PS), y - CY).project(camera);
       if (proj.z > 1 || proj.z < -1) return null;

@@ -150,13 +150,13 @@
   };
   KK.allLeagues = () => KK.COUNTRIES.flatMap(c => Array.from({ length: c.tiers }, (_, i) => ({ code: c.code, tier: i + 1, name: KK.tierName(c, i + 1), country: c })));
 
-  // ---------- continental cups ----------
+  // ---------- DLS Global Challenge Cup & Diamond Cup ----------
   KK.CUPS = {
-    crown: { name: 'Continental Crown Cup', short: 'Crown Cup', icon: '👑', win: 700, draw: 300, prize: 10000, runner: 4000 },
-    shield: { name: 'Continental Shield', short: 'Shield', icon: '🛡️', win: 400, draw: 180, prize: 5000, runner: 2000 },
+    crown: { name: 'Diamond Cup', short: 'Diamond Cup', icon: '💎', win: 450, draw: 200, prize: 6000, runner: 2500 },
+    shield: { name: 'Global Challenge Cup', short: 'Global Cup', icon: '🌍', win: 300, draw: 140, prize: 3500, runner: 1500 },
   };
   KK.CUP_DUE = [1, 2, 4, 5, 7, 8, 10, 12, 13]; // league round after which each cup matchday opens
-  KK.CUP_STAGE = ['Group MD1', 'Group MD2', 'Group MD3', 'Group MD4', 'Group MD5', 'Group MD6', 'Quarter-final', 'Semi-final', 'Final'];
+  KK.CUP_STAGE = ['Group MD1', 'Group MD2', 'Group MD3', 'Group MD4', 'Group MD5', 'Group MD6', 'Quarter-Final', 'Semi-Final', 'Final'];
 
   function cupPools(year) {
     const r = KK.seeded('cups' + year);
@@ -170,18 +170,22 @@
     return { crown, shield };
   }
   KK.makeCups = function (save, year) {
-    const pools = cupPools(year), q = save.cupQual || null, out = {};
+    const pools = cupPools(year), div = (save.season && save.season.div) || 8;
+    // In DLS, every club competes in the Global Challenge Cup ('shield'), and Division 3..Legendary or qualifiers also enter the Diamond Cup ('crown')
+    const q = save.cupQual || (div <= 4 ? 'crown' : 'shield');
+    const out = {};
     for (const kind of ['crown', 'shield']) {
       let teams = pools[kind].map(t => ({ ...t }));
-      if (q === kind) {
-        const me = { id: 'ME', name: save.team.name, short: save.team.short, c1: save.team.crest.c1, c2: save.team.crest.c2, country: save.career && save.career.country || 'GHA' };
+      const enterThis = (kind === 'shield') || (q === 'crown' && kind === 'crown');
+      if (enterThis) {
+        const me = { id: 'ME', name: save.team.name, short: save.team.short, c1: save.team.crest.c1, c2: save.team.crest.c2, country: save.career && save.career.country || 'ENG' };
         teams = teams.filter(t => t.id !== 'ME'); teams.sort((a, b) => b.rating - a.rating); teams[teams.length - 1] = me;
       }
       const r = KK.seeded(kind + year), ids = teams.map(t => t.id).sort(() => r() - 0.5);
       const groups = [0, 1, 2, 3].map(g => ids.slice(g * 4, g * 4 + 4));
       const gfix = [[], [], [], [], [], []];
       groups.forEach((g, gi) => KK.makeFixtures(g).forEach((rd, ri) => rd.forEach(f => gfix[ri].push({ ...f, g: gi }))));
-      out[kind] = { kind, name: KK.CUPS[kind].name, year, teams, groups, gfix, ko: [], md: 0, winner: null, runner: null, userIn: q === kind, userOut: false };
+      out[kind] = { kind, name: KK.CUPS[kind].name, year, teams, groups, gfix, ko: [], md: 0, winner: null, runner: null, userIn: enterThis, userOut: false };
     }
     save.cupQual = null;
     save.cups = out;

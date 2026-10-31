@@ -1,6 +1,6 @@
 {
-  "name": "Kente Kickers",
-  "description": "Build your football club, manage your squad, and play real-time 3D matches across Ghana and European leagues.",
+  "name": "Dream League Soccer",
+  "description": "Build your Dream Team, sign Legendary superstars, upgrade your Stadium and Club Facilities, and play live 3D broadcast football matches offline.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

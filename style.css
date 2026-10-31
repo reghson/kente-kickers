@@ -302,3 +302,60 @@ b.rplus{background:#c62828;color:#fff;border-radius:4px;padding:1px 5px;margin-r
 .tut-card h3{margin:0 0 4px}.tut-card p{margin:0 0 10px;font-size:14px}.tut-card .row{justify-content:center;gap:8px}
 .tut-hl{position:relative;z-index:31;outline:3px solid var(--gold)!important;outline-offset:3px;border-radius:50%;animation:tutp 1s infinite alternate}
 @keyframes tutp{to{outline-color:#fff}}
+
+/* ===== DREAM LEAGUE SOCCER (DLS) OVERHAUL THEME ===== */
+:root{--bg:#050d1e;--panel:#0d1e3f;--panel2:#142d5e;--line:#28509c;--mute:#9ab4df;--txt:#f0f6ff;--acc:#00e5ff;--gold:#ffd54f}
+body{background:radial-gradient(ellipse at 50% -15%,#173b82,#050d1e 65%) fixed}
+#topbar{background:linear-gradient(180deg,#102654,#07132c);border-bottom:2px solid #00e5ff;box-shadow:0 4px 18px #000b}
+#bottomnav{background:linear-gradient(180deg,#0e224cf5,#061026f8);border-top:1px solid #00e5ff55}
+#bottomnav button.on{color:#00e5ff;text-shadow:0 0 10px #00e5ff66}
+h3{color:#00e5ff;text-transform:uppercase;letter-spacing:.6px}
+.dls-badge{display:inline-block;background:linear-gradient(90deg,#00e5ff,#00e676);color:#041024;font-weight:900;font-size:10px;letter-spacing:1.2px;padding:3px 10px;border-radius:20px;margin-bottom:4px}
+.hero .logo{font-style:italic;font-size:28px;color:#fff;text-shadow:0 3px 0 #005b9f,0 0 18px #00e5ff66}
+.dls-line{height:4px;border-radius:2px;background:linear-gradient(90deg,transparent,#00e5ff,#00e676,#ffd54f,transparent);margin:8px 0}
+/* DLS Emerald Gems currency */
+.goldk{background:#0009;border:1px solid #00e676;border-radius:20px;padding:4px 10px;font-weight:800;color:#69f0ae;display:inline-flex;align-items:center;gap:5px}
+.goldk:before{content:"";width:12px;height:12px;border-radius:2px;background:linear-gradient(135deg,#69f0ae,#00c853,#00bfa5);transform:rotate(45deg);box-shadow:0 0 6px #00e67688}
+.gk{display:inline-block;width:11px;height:11px;border-radius:2px;background:linear-gradient(135deg,#69f0ae,#00c853,#00bfa5);transform:rotate(45deg);margin:0 3px 0 4px;vertical-align:-1px;box-shadow:0 0 5px #00e67688}
+.gk.big{width:24px;height:24px}
+.lvl{background:linear-gradient(180deg,#00e5ff,#0091ea);color:#041024;border-radius:6px;padding:3px 8px;font-weight:900;font-size:12px}
+/* Captain Selection Grid */
+.cap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:8px;margin:8px 0}
+.cap-card{background:linear-gradient(160deg,#1a3778,#0b193c);border:1.5px solid #2e56a6;border-radius:12px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;position:relative;transition:transform .15s}
+.cap-card.on{border-color:#00e5ff;box-shadow:0 0 0 2px #00e5ff,0 6px 18px #00e5ff44;background:linear-gradient(160deg,#254ea8,#102556);transform:translateY(-2px)}
+.cap-top{display:flex;justify-content:space-between;width:100%;align-items:center}
+.cap-ovr{font-size:18px;font-weight:900;color:#ffd54f}
+.cap-nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cap-mini-st{display:flex;gap:4px;font-size:9.5px;color:#00e5ff;font-weight:800;margin-top:2px}
+.cap-spotlight{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#07132cc9;border:1px solid #00e5ff66;border-radius:10px;padding:8px 12px;margin-top:8px}
+.tag-gold{background:linear-gradient(180deg,#ffe45c,#f5b800);color:#111;font-weight:900;font-size:11px;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.cap-badge{display:inline-block;background:#ffd54f;color:#111;font-weight:900;font-size:10px;padding:0 5px;border-radius:4px;margin-left:4px}
+.slot-cap{position:absolute;left:-5px;top:-4px;background:#ffd54f;color:#111;font-size:9px;font-weight:900;padding:1px 4px;border-radius:4px;border:1px solid #000}
+.rt.leg{background:linear-gradient(180deg,#ffe45c,#f5b800);color:#0b1326;box-shadow:0 0 8px #ffd54f55}
+/* DLS 8-Stat Card & Tier Styling */
+.pcard.silver{background:linear-gradient(150deg,#b3e5fc 0%,#2979ff 40%,#0d47a1 78%,#82b1ff 100%);color:#fff}
+.pcard.silver .pc-ovr{text-shadow:0 2px 0 #0008}
+.pc-tier-badge{font-size:9px;font-weight:900;letter-spacing:1.4px;background:#06122cd8;color:#00e5ff;padding:2px 10px;border-radius:10px;display:inline-block;margin-bottom:2px}
+.pc-foot-tag{font-size:9.5px;font-weight:800;background:#00000028;padding:2px 6px;border-radius:5px}
+.dls-stats.eight-grid{grid-template-columns:repeat(4,1fr);gap:4px}
+.dls-st.st-max b{color:#00e5ff}.dls-st.st-hi b{color:#00e676}.dls-st.st-md b{color:#ffd54f}.dls-st.st-lo b{color:#ff8a65}
+/* Coaches, Agents, Scouts & Facilities */
+.coach-grid,.agent-grid,.fac-grid,.roles-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;margin-top:8px}
+.coach-card,.fac-card,.agent-box{background:linear-gradient(180deg,#162f6a,#0b193c);border:1.5px solid #2e56a6;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:4px}
+.coach-cnt{font-size:12px;color:#cfe0ff;margin:2px 0}
+.agent-box{text-align:center;align-items:center}
+.agent-box.rare{border-color:#00e5ff;background:linear-gradient(160deg,#123c7a,#091b3e)}
+.agent-box.leg{border-color:#ffd54f;background:linear-gradient(160deg,#4a370d,#181306)}
+.ag-badge{font-size:10px;font-weight:900;letter-spacing:1px;padding:2px 8px;border-radius:8px;background:#0007;color:#00e5ff}
+.agent-box.leg .ag-badge{color:#ffd54f}
+.tier-pill{font-size:9px;font-weight:900;padding:1px 5px;border-radius:4px;margin-left:4px;vertical-align:1px}
+.tier-pill.legendary{background:#ffd54f;color:#111}
+.tier-pill.rare{background:#2979ff;color:#fff}
+.tier-pill.common{background:#546e7a;color:#fff}
+.walkout-banner{background:linear-gradient(90deg,#00e5ff,#00e676);color:#041024;font-weight:900;font-size:13px;letter-spacing:1px;padding:6px;border-radius:8px;margin-bottom:8px}
+.fac-top{display:flex;align-items:center;gap:8px}.fac-ic{font-size:26px}.fac-top b{display:block;font-size:14px}.fac-top small{color:var(--mute);font-size:11px}
+.cap-req{padding:7px 10px;border-radius:8px;font-size:12px;margin:6px 0}
+.cap-req.ok{background:#00e67622;border:1px solid #00e676;color:#b9f6ca}
+.cap-req.warn{background:#ff910022;border:1px solid #ff9100;color:#ffe082}
+.tile.hl-cyan{border-color:#00e5ff;box-shadow:inset 0 1px 0 #ffffff40,0 0 14px #00e5ff33}
+
